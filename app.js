@@ -376,9 +376,10 @@ function figureSVG(f, viewBox = '0 -8 170 292') {
 }
 
 // ---------- API ----------
-async function fetchForecast(lat, lon) {
+// range: 既定は昨日〜7日先。旅行では { start_date, end_date } を渡す（16日先まで）
+async function fetchForecast(lat, lon, range = { forecast_days: 7, past_days: 1 }) {
   const params = new URLSearchParams({
-    latitude: lat, longitude: lon, timezone: 'auto', forecast_days: 7, past_days: 1, wind_speed_unit: 'ms',
+    latitude: lat, longitude: lon, timezone: 'auto', wind_speed_unit: 'ms', ...range,
     current: 'temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m',
     hourly: 'temperature_2m,apparent_temperature,precipitation_probability,weather_code,relative_humidity_2m,wind_speed_10m',
     daily: 'weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_probability_max,uv_index_max,wind_speed_10m_max',
@@ -455,6 +456,23 @@ async function searchPlaces(query) {
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => `${Math.round(n)}℃`;
 const WD = ['日', '月', '火', '水', '木', '金', '土'];
+// 日付（YYYY-MM-DD の文字列）
+const pad2 = (n) => String(n).padStart(2, '0');
+const toISO = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const addDays = (iso, n) => {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return toISO(d);
+};
+const daysBetween = (from, to) => {
+  const list = [];
+  for (let d = from; d <= to; d = addDays(d, 1)) list.push(d);
+  return list;
+};
+const dateLabel = (iso) => {
+  const d = new Date(`${iso}T00:00:00`);
+  return `${d.getMonth() + 1}/${d.getDate()}（${WD[d.getDay()]}）`;
+};
 const el = (tag, cls, text) => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -613,28 +631,36 @@ function renderAir(air, pollen) {
   }));
 }
 
-// 持ち物チェックリスト（チェックは日付ごとに保存）
+// 持ち物チェックリスト（今日・明日は日付ごと、旅行は旅行ごとにチェックを保存）
 function renderItems(day, items) {
-  const checks = store.get('checks', {});
-  const done = new Set(checks[day.date] || []);
+  renderChecklist($('items'), $('items-count'), items, day.date);
+}
+
+function renderChecklist(ul, countEl, items, key) {
+  const ids = new Set(items.map((it) => it.id));
+  const done = new Set((store.get('checks', {})[key] || []).filter((id) => ids.has(id)));
   const count = () => {
     const n = items.filter((it) => done.has(it.id)).length;
-    $('items-count').textContent = items.length ? `${n} / ${items.length}` : '';
+    countEl.textContent = items.length ? `${n} / ${items.length}` : '';
   };
   const save = () => {
+    // 同じ key を使う別のリスト（旅行の服・持ち物）のチェックは残す
+    const checks = store.get('checks', {});
+    const others = (checks[key] || []).filter((id) => !ids.has(id));
     const keep = {};
-    const oldest = state.data.daily.time[todayIndex(state.data)];
-    Object.keys(checks).forEach((k) => { if (k >= oldest) keep[k] = checks[k]; }); // 過去の日は消す
-    keep[day.date] = [...done];
+    const today = toISO(new Date());
+    // 過ぎた日付のチェックは消す（旅行のチェックは旅行を消すまで残す）
+    Object.keys(checks).forEach((k) => { if (!/^\d{4}-/.test(k) || k >= today) keep[k] = checks[k]; });
+    keep[key] = [...others, ...done];
     store.set('checks', keep);
   };
 
   if (items.length === 0) {
-    $('items').replaceChildren(el('li', 'none', '特別な持ち物はありません。'));
+    ul.replaceChildren(el('li', 'none', '特別な持ち物はありません。'));
     count();
     return;
   }
-  $('items').replaceChildren(...items.map((it) => {
+  ul.replaceChildren(...items.map((it) => {
     const li = el('li', done.has(it.id) ? 'done' : '');
     const label = el('label');
     const box = el('input');
@@ -959,6 +985,420 @@ $('presets').replaceChildren(...PRESETS.map((p) => {
   b.addEventListener('click', () => loadPlace(p));
   return b;
 }));
+
+// ---------- 旅行 ----------
+const FORECAST_DAYS = 16; // 予報が出ている日数（今日を含む）
+const CLIMATE_YEARS = 3;  // 16日より先は過去3年の同じ日の天気から目安を出す
+const MAX_TRIP_DAYS = 31;
+
+// 過去の年の同じ日（2/29 は 2/28 にする）
+const sameDayYearsAgo = (iso, k) => {
+  const s = `${Number(iso.slice(0, 4)) - k}${iso.slice(4)}`;
+  return s.endsWith('-02-29') ? s.replace('-02-29', '-02-28') : s;
+};
+
+async function climateDays(place, from, to) {
+  const daily = 'weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_sum,wind_speed_10m_max';
+  const years = await Promise.all(Array.from({ length: CLIMATE_YEARS }, async (_, j) => {
+    const params = new URLSearchParams({
+      latitude: place.lat, longitude: place.lon, timezone: 'auto', wind_speed_unit: 'ms', daily,
+      start_date: sameDayYearsAgo(from, j + 1), end_date: sameDayYearsAgo(to, j + 1),
+    });
+    const res = await fetch(`https://archive-api.open-meteo.com/v1/archive?${params}`);
+    if (!res.ok) throw new Error(`過去の天気の取得に失敗しました（${res.status}）`);
+    return (await res.json()).daily;
+  }));
+
+  return daysBetween(from, to).map((date) => {
+    const rows = years.map((d, j) => {
+      const i = d.time.indexOf(sameDayYearsAgo(date, j + 1));
+      if (i < 0 || d.temperature_2m_max[i] == null) return null;
+      return {
+        tMax: d.temperature_2m_max[i], tMin: d.temperature_2m_min[i],
+        fMax: d.apparent_temperature_max[i], fMin: d.apparent_temperature_min[i],
+        rain: d.precipitation_sum[i] ?? 0, wind: d.wind_speed_10m_max[i] ?? 0, code: d.weather_code[i],
+      };
+    }).filter(Boolean);
+    if (!rows.length) return null;
+    const mean = (k) => avg(rows.map((r) => r[k]));
+    const tMax = mean('tMax');
+    const feelMax = mean('fMax');
+    const pop = Math.round((100 * rows.filter((r) => r.rain >= 1).length) / rows.length); // 雨（1mm以上）だった年の割合
+    const snow = rows.some((r) => isSnow(r.code)) && tMax < 5;
+    return {
+      date, source: 'climate',
+      code: pop >= 50 ? (snow ? 73 : 63) : pop > 0 ? (snow ? 71 : 2) : 1,
+      dayMax: tMax, dayMin: mean('tMin'), tMax, tMin: mean('tMin'),
+      feelMax, feelMin: mean('fMin'), pop, wind: mean('wind'), uv: 0, humAvg: 0, codes: [], snow,
+      outfit: outfitFor(feelMax + settings.offset), laundry: null,
+    };
+  }).filter(Boolean);
+}
+
+// ある場所の from〜to の各日（16日先までは予報、それより先は平年の目安）
+async function fetchTripDays(place, from, to) {
+  const lastForecast = addDays(toISO(new Date()), FORECAST_DAYS - 1);
+  const jobs = [];
+  if (from <= lastForecast) {
+    jobs.push(fetchForecast(place.lat, place.lon, { start_date: from, end_date: to < lastForecast ? to : lastForecast })
+      .then((data) => data.daily.time.map((_, i) => ({ ...dayData(data, i), source: 'forecast' }))));
+  }
+  if (to > lastForecast) jobs.push(climateDays(place, from > lastForecast ? from : addDays(lastForecast, 1), to));
+  return (await Promise.all(jobs)).flat().map((d) => ({ ...d, place }));
+}
+
+// 旅行全体のまとめ
+function tripSummary(days, homeDays, home) {
+  const tips = [];
+  const maxs = days.map((d) => d.dayMax);
+  const mins = days.map((d) => d.dayMin);
+  tips.push(`🌡️ 期間中の気温は 最高 ${fmt(Math.min(...maxs))}〜${fmt(Math.max(...maxs))}、最低 ${fmt(Math.min(...mins))}〜${fmt(Math.max(...mins))}。`);
+
+  const counts = new Map();
+  days.forEach((d) => counts.set(d.outfit, (counts.get(d.outfit) || 0) + 1));
+  const main = [...counts].sort((a, b) => b[1] - a[1])[0][0];
+  const coldest = days.reduce((a, b) => (OUTFITS.indexOf(b.outfit) > OUTFITS.indexOf(a.outfit) ? b : a));
+  const warmest = days.reduce((a, b) => (OUTFITS.indexOf(b.outfit) < OUTFITS.indexOf(a.outfit) ? b : a));
+  let wear = `👕 服装は「${main.title}」が中心。`;
+  if (coldest.outfit !== main) wear += `いちばん寒い ${dateLabel(coldest.date)} は「${coldest.outfit.title}」が必要です。`;
+  if (warmest.outfit !== main && OUTFITS.indexOf(warmest.outfit) < OUTFITS.indexOf(main) - 1) wear += `暖かい ${dateLabel(warmest.date)} は「${warmest.outfit.title}」で過ごせます。`;
+  tips.push(wear);
+
+  const rainy = days.filter((d) => d.pop >= 50);
+  const maybe = days.filter((d) => d.pop >= 30 && d.pop < 50);
+  if (rainy.length) tips.push(`☔ 雨の可能性が高い日：${[...new Set(rainy.map((d) => dateLabel(d.date)))].join('、')}。折りたたみ傘を持っていきましょう。`);
+  else if (maybe.length) tips.push(`🌂 にわか雨の可能性がある日：${[...new Set(maybe.map((d) => dateLabel(d.date)))].join('、')}。折りたたみ傘があると安心。`);
+  else tips.push('☀️ 雨の心配は少なそうです。');
+  if (days.some((d) => d.snow)) tips.push('⛄ 雪の可能性があります。滑りにくい靴を選びましょう。');
+  if (Math.max(...maxs) - Math.min(...mins) >= 12) tips.push('🧥 朝晩と日中の気温差が大きい旅行です。脱ぎ着しやすい重ね着がおすすめ。');
+
+  if (homeDays?.length) {
+    const homeBy = new Map(homeDays.map((d) => [d.date, d.dayMax]));
+    const diffs = days.filter((d) => homeBy.has(d.date)).map((d) => d.dayMax - homeBy.get(d.date));
+    if (diffs.length) {
+      const diff = Math.round(avg(diffs));
+      const advice = diff <= -3 ? '家で着ている服より厚めに。' : diff >= 3 ? '家で着ている服より薄めでOK。' : '家と同じくらいの服装で大丈夫です。';
+      tips.push(diff === 0
+        ? `🏠 出発地（${home.name}）とほぼ同じ気温。${advice}`
+        : `🏠 出発地（${home.name}）より最高気温が平均 ${Math.abs(diff)}℃ ${diff < 0 ? '低い' : '高い'}。${advice}`);
+    }
+  }
+  if (days.some((d) => d.source === 'climate')) {
+    tips.push('📅 16日より先の日は予報がまだ出ていないため、過去3年の同じ日の天気から出した目安です。近くなったらもう一度まとめ直してください。');
+  }
+  return tips;
+}
+
+// 荷物リスト：服（枚数）
+function packClothes(days) {
+  // 同じ日に2か所いる日は、寒いほうに合わせる
+  const byDate = new Map();
+  days.forEach((d) => byDate.set(d.date, Math.max(byDate.get(d.date) ?? -1, OUTFITS.indexOf(d.outfit))));
+  const levels = [...byDate.values()];
+  const n = levels.length;
+  const cnt = (f) => levels.filter(f).length;
+  const list = [];
+  const add = (id, icon, name, num, why) => { if (num > 0) list.push({ id, icon, name: `${name} ×${num}`, why }); };
+
+  add('c-tank', '🎽', 'ノースリーブ・半袖', cnt((l) => l === 0), '真夏日の日');
+  add('c-tee', '👕', '半袖Tシャツ', cnt((l) => l === 1), '半袖の日');
+  add('c-long', '👔', '長袖シャツ・カットソー', cnt((l) => l >= 2), '長袖の日');
+  add('c-knit', '🧶', 'ニット・セーター', Math.min(2, Math.ceil(cnt((l) => l >= 4) / 3)), '寒い日の重ね着');
+  add('c-heat', '🔥', 'あったかインナー', cnt((l) => l >= 6), 'とても寒い日');
+
+  const OUTER = { 3: 'カーディガン・薄手の羽織', 4: 'ジャケット', 5: 'トレンチコート・薄手のコート', 6: '冬物コート', 7: 'ダウンジャケット' };
+  const outers = levels.filter((l) => l >= 3);
+  if (outers.length) {
+    const warm = Math.max(...outers);
+    add(`c-outer${warm}`, '🧥', OUTER[warm], 1, outers.length > 1 ? 'いちばん寒い日に合わせて' : '');
+    const light = Math.min(...levels);
+    if (light >= 3 && light <= warm - 2) add(`c-outer${light}`, '🧥', OUTER[light], 1, '暖かい日用');
+    else if (light < 3 && warm >= 5) add('c-outer3', '🧥', OUTER[3], 1, '暖かい日・室内用');
+  }
+
+  add('c-shorts', '🩳', 'ショートパンツ', Math.ceil(cnt((l) => l === 0) / 2), '真夏日の日');
+  add('c-pants', '👖', 'ズボン・スカート', Math.ceil(cnt((l) => l >= 1) / 2), '2日に1枚の目安');
+  add('c-under', '🧦', '下着・靴下', n, `${n}日分`);
+  return list;
+}
+
+// 荷物リスト：持ち物（各日の持ち物をまとめる）
+function packItems(days) {
+  const map = new Map();
+  days.forEach((d) => buildItems(d, []).forEach((it) => {
+    const id = it.id === 'folding' ? 'umbrella' : it.id; // 旅行では傘はまとめて折りたたみ傘に
+    const item = map.get(id) || { ...it, id, name: id === 'umbrella' ? '折りたたみ傘' : it.name, icon: id === 'umbrella' ? '🌂' : it.icon, dates: new Set() };
+    item.dates.add(d.date);
+    map.set(id, item);
+  }));
+  return [...map.values()].map((it) => ({
+    ...it,
+    name: it.id === 'kairo' ? `${it.name} ×${it.dates.size}` : it.name,
+    why: `必要な日：${it.dates.size}日`,
+  }));
+}
+
+// ----- 旅行の入力フォーム -----
+let trip = null;
+let trips = store.get('trips', []);
+
+const tripHomeChoices = () => {
+  const list = [store.get('last', null), ...favorites].filter(Boolean);
+  const seen = new Set();
+  return list.filter((p) => !seen.has(placeKey(p)) && seen.add(placeKey(p)));
+};
+
+function newTrip() {
+  const tomorrow = addDays(toISO(new Date()), 1);
+  return { id: null, name: '', home: store.get('last', null), legs: [{ place: null, q: '', from: tomorrow, to: addDays(tomorrow, 2) }] };
+}
+
+const tripStatus = (msg, isError = false) => {
+  $('trip-status').textContent = msg;
+  $('trip-status').classList.toggle('error', isError);
+};
+
+function renderTripForm() {
+  $('trip-name').value = trip.name;
+  renderLegs();
+
+  const homes = tripHomeChoices();
+  const sel = $('trip-home');
+  sel.replaceChildren(new Option('比べない', ''), ...homes.map((p) => new Option(p.name, placeKey(p))));
+  sel.value = trip.home ? placeKey(trip.home) : '';
+  if (trip.home && sel.value === '') { // 一覧にない出発地（保存した旅行）
+    sel.append(new Option(trip.home.name, placeKey(trip.home)));
+    sel.value = placeKey(trip.home);
+  }
+  renderSavedTrips();
+}
+
+function renderLegs() {
+  const today = toISO(new Date());
+  $('legs').replaceChildren(...trip.legs.map((leg, i) => {
+    const row = el('div', 'leg');
+    const num = el('span', 'leg-num', `${i + 1}`);
+
+    const wrap = el('div', 'leg-place');
+    const input = el('input');
+    input.type = 'search';
+    input.placeholder = '行き先（例：札幌、那覇）';
+    input.enterKeyHint = 'search';
+    input.value = leg.place ? leg.place.name : leg.q;
+    input.setAttribute('aria-label', `${i + 1}つ目の行き先`);
+    const results = el('ul', 'search-results');
+    results.hidden = true;
+    const find = el('button', 'leg-find', '検索');
+    find.type = 'button';
+
+    const choose = (p) => {
+      leg.place = p;
+      leg.q = p.name;
+      input.value = p.name;
+      results.hidden = true;
+      tripStatus('');
+    };
+    const search = async () => {
+      const q = input.value.trim();
+      if (!q) return;
+      tripStatus('検索中…');
+      try {
+        const list = await searchPlaces(q);
+        if (list.length === 0) { tripStatus(`「${q}」が見つかりませんでした`, true); return; }
+        if (list.length === 1) { choose(list[0]); return; }
+        results.replaceChildren(...list.map((p) => {
+          const li = el('li', null, p.name);
+          li.append(el('small', null, p.admin));
+          li.addEventListener('click', () => choose(p));
+          return li;
+        }));
+        results.hidden = false;
+        tripStatus('');
+      } catch (err) { tripStatus(err.message, true); }
+    };
+    input.addEventListener('input', () => { leg.q = input.value; leg.place = null; });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); search(); } });
+    find.addEventListener('click', search);
+    wrap.append(input, find, results);
+
+    const dates = el('div', 'leg-dates');
+    const from = el('input');
+    const to = el('input');
+    [from, to].forEach((d) => { d.type = 'date'; d.min = today; });
+    from.value = leg.from;
+    to.value = leg.to;
+    from.setAttribute('aria-label', `${i + 1}つ目の行き先の最初の日`);
+    to.setAttribute('aria-label', `${i + 1}つ目の行き先の最後の日`);
+    from.addEventListener('change', () => {
+      leg.from = from.value;
+      if (leg.to < leg.from) { leg.to = leg.from; to.value = leg.to; }
+    });
+    to.addEventListener('change', () => {
+      leg.to = to.value;
+      if (leg.to < leg.from) { leg.from = leg.to; from.value = leg.from; }
+    });
+    dates.append(from, el('span', null, '〜'), to);
+
+    row.append(num, wrap, dates);
+    if (trip.legs.length > 1) {
+      const del = el('button', 'leg-del', '×');
+      del.type = 'button';
+      del.setAttribute('aria-label', `${i + 1}つ目の行き先を削除`);
+      del.addEventListener('click', () => { trip.legs.splice(i, 1); renderLegs(); });
+      row.append(del);
+    }
+    return row;
+  }));
+}
+
+function renderSavedTrips() {
+  const box = $('trip-saved');
+  box.hidden = trips.length === 0;
+  box.replaceChildren(el('span', 'chips-label saved-label', '保存した旅行'), ...trips.map((t) => {
+    const chip = el('span', `chip${trip && t.id === trip.id ? ' on' : ''}`);
+    const from = t.legs.map((l) => l.from).sort()[0];
+    const go = el('button', 'chip-main', `${t.name}（${dateLabel(from).replace(/（.）/, '')}〜）`);
+    go.type = 'button';
+    go.addEventListener('click', () => {
+      trip = structuredClone(t);
+      renderTripForm();
+      runTrip();
+    });
+    const del = el('button', 'chip-del', '×');
+    del.type = 'button';
+    del.setAttribute('aria-label', `${t.name} を削除`);
+    del.addEventListener('click', () => {
+      trips = trips.filter((x) => x.id !== t.id);
+      store.set('trips', trips);
+      const checks = store.get('checks', {});
+      delete checks[`trip:${t.id}`];
+      store.set('checks', checks);
+      if (trip.id === t.id) { trip = newTrip(); renderTripForm(); $('trip-result').hidden = true; }
+      renderSavedTrips();
+    });
+    chip.append(go, del);
+    return chip;
+  }));
+}
+
+async function runTrip() {
+  const today = toISO(new Date());
+  tripStatus('準備中…');
+  try {
+    // 検索ボタンを押していない行き先は、いちばん上の候補にする
+    for (const leg of trip.legs) {
+      if (!leg.place && leg.q.trim()) leg.place = (await searchPlaces(leg.q.trim()))[0] || null;
+    }
+  } catch (err) { tripStatus(err.message, true); return; }
+
+  const legs = trip.legs.filter((l) => l.place);
+  if (legs.length === 0) { tripStatus('行き先を入力してください', true); return; }
+  if (legs.length < trip.legs.filter((l) => l.q.trim()).length) { tripStatus('見つからない行き先があります。地名を確かめてください', true); return; }
+  if (legs.some((l) => !l.from || !l.to)) { tripStatus('日付を入れてください', true); return; }
+  if (legs.some((l) => l.from < today)) { tripStatus('過ぎた日は選べません。今日以降の日付にしてください', true); return; }
+  const from = legs.map((l) => l.from).sort()[0];
+  const to = legs.map((l) => l.to).sort().at(-1);
+  if (daysBetween(from, to).length > MAX_TRIP_DAYS) { tripStatus(`旅行の期間は${MAX_TRIP_DAYS}日以内にしてください`, true); return; }
+
+  trip.name = $('trip-name').value.trim() || [...new Set(legs.map((l) => l.place.name))].join('・');
+  const homeKey = $('trip-home').value;
+  trip.home = homeKey ? [...tripHomeChoices(), trip.home].find((p) => p && placeKey(p) === homeKey) || null : null;
+
+  tripStatus('天気を取得中…');
+  try {
+    const [dayLists, homeDays] = await Promise.all([
+      Promise.all(legs.map((l) => fetchTripDays(l.place, l.from, l.to))),
+      trip.home ? fetchTripDays(trip.home, from, to).catch(() => null) : null,
+    ]);
+    const days = dayLists.flat().sort((a, b) => a.date.localeCompare(b.date));
+    if (days.length === 0) { tripStatus('天気データが見つかりませんでした', true); return; }
+
+    // 保存（同じ旅行は上書き）
+    if (!trip.id) trip.id = Date.now().toString(36);
+    const saved = { id: trip.id, name: trip.name, home: trip.home, legs: legs.map(({ place, from: f, to: t }) => ({ place, q: place.name, from: f, to: t })) };
+    trips = [saved, ...trips.filter((t) => t.id !== trip.id)].slice(0, 10);
+    store.set('trips', trips);
+    renderSavedTrips();
+
+    renderTripResult(days, homeDays, from, to);
+    tripStatus('');
+  } catch (err) {
+    tripStatus(err.message || '通信エラーが発生しました', true);
+  }
+}
+
+function renderTripResult(days, homeDays, from, to) {
+  const n = new Set(days.map((d) => d.date)).size; // 行き先の間に空いた日は数えない
+  const span = daysBetween(from, to).length;
+  $('trip-title').textContent = `${trip.name}　${dateLabel(from)}〜${dateLabel(to)}（${n === span ? `${n}日間` : `${n}日分`}）`;
+  $('trip-summary').replaceChildren(...tripSummary(days, homeDays, trip.home).map((t) => el('li', null, t)));
+
+  const multi = new Set(days.map((d) => placeKey(d.place))).size > 1;
+  $('trip-days').replaceChildren(...days.map((d) => {
+    const wd = new Date(`${d.date}T00:00:00`).getDay();
+    const row = el('div', 'day');
+    const date = el('div', `date ${wd === 0 ? 'sun' : wd === 6 ? 'sat' : ''}`, dateLabel(d.date));
+    if (multi || d.source === 'climate') {
+      const sub = el('small', 'sub');
+      if (multi) sub.append(d.place.name);
+      if (d.source === 'climate') sub.append(el('span', 'src', '平年'));
+      date.append(sub);
+    }
+    const [desc, icon] = weatherOf(d.code);
+    const icn = el('div', 'i', icon);
+    icn.title = d.source === 'climate' ? `例年：${desc}` : desc;
+    const temps = el('div', 'temps');
+    temps.append(el('span', 'max', fmt(d.dayMax)), ' / ', el('span', 'min', fmt(d.dayMin)));
+    const wear = el('div', 'wear');
+    const outfit = el('span', 'wear-outfit');
+    const mini = el('span', 'mini-fig');
+    mini.innerHTML = figureSVG({ ...d.outfit.fig, label: d.outfit.title }, '36 -6 88 160');
+    outfit.append(mini, `${d.outfit.title}${d.pop >= 50 ? '＋傘' : ''}`);
+    wear.append(outfit);
+    row.append(date, icn, temps, el('div', 'pop', `☂ ${d.pop}%`), wear);
+    return row;
+  }));
+
+  const key = `trip:${trip.id}`;
+  renderChecklist($('pack-clothes'), $('pack-clothes-count'), packClothes(days), key);
+  renderChecklist($('pack-items'), $('pack-items-count'), packItems(days), key);
+  $('trip-result').hidden = false;
+}
+
+$('leg-add').addEventListener('click', () => {
+  const last = trip.legs.at(-1);
+  const from = last?.to ? addDays(last.to, 1) : addDays(toISO(new Date()), 1);
+  trip.legs.push({ place: null, q: '', from, to: from });
+  renderLegs();
+  $('legs').querySelector('.leg:last-child input').focus();
+});
+$('trip-name').addEventListener('input', () => { trip.name = $('trip-name').value; });
+$('trip-run').addEventListener('click', runTrip);
+$('trip-new').addEventListener('click', () => {
+  trip = newTrip();
+  renderTripForm();
+  $('trip-result').hidden = true;
+  tripStatus('');
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.leg-place')) document.querySelectorAll('.leg-place .search-results').forEach((u) => { u.hidden = true; });
+});
+
+// ---------- 画面の切り替え（きょう／旅行） ----------
+function setMode(mode) {
+  $('today-view').hidden = mode !== 'today';
+  $('trip-view').hidden = mode !== 'trip';
+  document.querySelectorAll('.mode-tabs button').forEach((b) => {
+    const on = b.dataset.mode === mode;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-selected', on);
+  });
+  if (mode === 'trip') {
+    if (!trip) trip = newTrip();
+    renderTripForm();
+  }
+}
+document.querySelectorAll('.mode-tabs button').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
 
 // ---------- 起動 ----------
 // 通知（Android など）に必要。ファイルを直接開いたときは登録できないので無視する

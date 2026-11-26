@@ -16,9 +16,14 @@
   <header class="site-header">
     <h1>てんき服</h1>
     <p class="tagline">地域の天気から、今日なにを着るかを提案します</p>
+    <nav class="mode-tabs" role="tablist" aria-label="画面の切り替え">
+      <button type="button" role="tab" data-mode="today" class="active" aria-selected="true">☀️ きょう</button>
+      <button type="button" role="tab" data-mode="trip" aria-selected="false">🧳 旅行</button>
+    </nav>
   </header>
 
   <main>
+    <div id="today-view">
     <section class="search">
       <form id="search-form" autocomplete="off">
         <input id="search-input" type="search" placeholder="市区町村名で検索（例：横浜、金沢、旭川）" aria-label="地域名">
@@ -131,6 +136,51 @@
         <p class="muted small">洗濯：◎よく乾く　○乾く　△乾きにくい　×部屋干し推奨（9〜15時の予報で判定）</p>
       </div>
     </section>
+    </div>
+
+    <div id="trip-view" hidden>
+      <section class="card trip-form">
+        <h3>旅行の予定</h3>
+        <div id="trip-saved" class="chips trip-saved" hidden></div>
+        <label class="field">
+          <span>旅行の名前（空欄なら行き先の名前）</span>
+          <input id="trip-name" type="text" placeholder="例：北海道旅行">
+        </label>
+        <div class="field">
+          <span>行き先と日付（日ごとに行き先が変わるときは追加）</span>
+          <div id="legs" class="legs"></div>
+          <button type="button" id="leg-add" class="small-btn">＋ 行き先を追加</button>
+        </div>
+        <label class="field">
+          <span>出発地（自宅）と気温を比べる</span>
+          <select id="trip-home"></select>
+        </label>
+        <div class="trip-actions">
+          <button type="button" id="trip-run" class="primary">天気と服装をまとめる</button>
+          <button type="button" id="trip-new">新しい旅行</button>
+        </div>
+        <p id="trip-status" class="status" role="status"></p>
+      </section>
+
+      <section id="trip-result" hidden>
+        <div class="card">
+          <h3 id="trip-title"></h3>
+          <ul id="trip-summary" class="advice"></ul>
+        </div>
+        <div class="card">
+          <h3>日ごとの天気と服装</h3>
+          <div id="trip-days" class="daily"></div>
+          <p class="muted small">16日より先の日は「平年」と表示します。予報がまだ出ていないため、過去3年の同じ日の天気から出した目安です（☂ は雨だった年の割合）。</p>
+        </div>
+        <div class="card">
+          <h3>荷物リスト</h3>
+          <div class="items-head"><h4>服</h4><span id="pack-clothes-count" class="muted"></span></div>
+          <ul id="pack-clothes" class="items"></ul>
+          <div class="items-head"><h4>持ち物</h4><span id="pack-items-count" class="muted"></span></div>
+          <ul id="pack-items" class="items"></ul>
+        </div>
+      </section>
+    </div>
   </main>
 
   <footer class="site-footer">
