@@ -232,85 +232,146 @@ function buildItems(d, mask) {
 }
 
 // ---------- 服装のイラスト（SVG） ----------
-const SKIN = '#f3c9a1';
-const HAIR = '#4a3426';
+// 座標は幅160の枠で、x=80 が体の中心。左半身の形を描き、右半身は左右反転して描く
+const SKIN = '#f1c7a5';
+const SKIN_SHADE = '#d9a582';
 const CLOTH = {
-  tank: '#ef7a5a', tee: '#5b9be6', long: '#eef1f6', pants: '#4f6187', shorts: '#7d93b8',
-  cardigan: '#d9a066', jacket: '#7a8d5c', trench: '#cdae7e', coat: '#5a6c96', down: '#e46a5e',
-  scarf: '#c8464a', knit: '#c8464a', cap: '#f2b84b', umbrella: '#3f86f0', glove: '#7a4f3a',
+  tank: '#e9735a', tee: '#4f8fd9', long: '#f4f5f7', pants: '#3f5379', shorts: '#8fa3c4',
+  cardigan: '#c8955f', jacket: '#6f7f55', trench: '#c9aa7a', coat: '#3d4c6e', down: '#d9584c',
+  scarf: '#b8423f', knit: '#b8423f', cap: '#efb243', umbrella: '#3b7fe0', glove: '#6b4532', shoe: '#3a302b',
 };
-const LINE = 'stroke="rgba(0,0,0,.25)" stroke-width="1" stroke-linejoin="round"';
-const shape = (d, fill) => `<path d="${d}" fill="${fill}" ${LINE}/>`;
-// 左側の形を描いて、左右反転したものも描く
-const pair = (d, fill) => shape(d, fill) + `<g transform="matrix(-1 0 0 1 120 0)">${shape(d, fill)}</g>`;
+const darken = (hex, k = 0.72) => `#${[1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('')}`;
+const MIRROR = 'matrix(-1 0 0 1 160 0)';
+// 塗り＋輪郭＋立体感の陰影
+const part = (d, fill) => `<path d="${d}" fill="${fill}" stroke="${darken(fill)}" stroke-width="1" stroke-linejoin="round"/><path d="${d}" fill="url(#tf-shade)"/>`;
+const pair = (d, fill) => `${part(d, fill)}<g transform="${MIRROR}">${part(d, fill)}</g>`;
+// しわ・縫い目などの線
+const lines = (d, color = 'rgba(0,0,0,.18)', w = 1) => `<path d="${d}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
+const pairLines = (d, color, w) => `${lines(d, color, w)}<g transform="${MIRROR}">${lines(d, color, w)}</g>`;
+const pairEl = (svg) => `${svg}<g transform="${MIRROR}">${svg}</g>`;
+const buttons = (xs, ys, color) => xs.flatMap((x) => ys.map((y) => `<circle cx="${x}" cy="${y}" r="1.8" fill="${color}"/>`)).join('');
+
+const FIG_DEFS = `<defs>
+<linearGradient id="tf-shade" x1="0" x2="1"><stop offset="0" stop-color="#000" stop-opacity=".16"/><stop offset=".35" stop-color="#fff" stop-opacity=".14"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".22"/></linearGradient>
+<radialGradient id="tf-face" cx=".42" cy=".38" r=".7"><stop offset="0" stop-color="#f8d9bf"/><stop offset=".7" stop-color="${SKIN}"/><stop offset="1" stop-color="${SKIN_SHADE}"/></radialGradient>
+<linearGradient id="tf-hair" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5e4332"/><stop offset="1" stop-color="#2c1f17"/></linearGradient>
+<linearGradient id="tf-glass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#666"/><stop offset=".5" stop-color="#111"/></linearGradient>
+</defs>`;
 
 function figureSVG(f) {
-  const p = [];
+  const p = [FIG_DEFS];
+  p.push('<ellipse cx="80" cy="281" rx="44" ry="5" fill="rgba(0,0,0,.12)"/>'); // 足もとの影
+
   // 脚・靴
-  p.push(`<g stroke="${SKIN}" stroke-width="9" stroke-linecap="round"><line x1="51" y1="110" x2="51" y2="157"/><line x1="69" y1="110" x2="69" y2="157"/></g>`);
-  p.push('<ellipse cx="50" cy="161" rx="8" ry="4" fill="#3a3f4a"/><ellipse cx="70" cy="161" rx="8" ry="4" fill="#3a3f4a"/>');
-  p.push(f.bottom === 'shorts'
-    ? shape('M42 98 L78 98 L78 124 L62 124 L60 110 L58 124 L42 124 Z', CLOTH.shorts)
-    : shape('M42 98 L78 98 L77 157 L63 157 L60 112 L57 157 L43 157 Z', CLOTH.pants));
-  // 腕・首
-  p.push(`<g stroke="${SKIN}" stroke-width="8" stroke-linecap="round"><line x1="45" y1="50" x2="33" y2="97"/><line x1="75" y1="50" x2="87" y2="97"/></g>`);
-  p.push(`<rect x="55" y="34" width="10" height="10" fill="${SKIN}"/>`);
+  p.push(pair('M59 150 Q57 185 62 215 Q60 242 64 268 L74 268 Q75 242 76 215 Q79 185 80 150 Z', SKIN));
+  p.push(pair('M61 263 L75 263 Q77 271 76 279 L55 279 Q53 272 61 267 Z', CLOTH.shoe));
+  if (f.bottom === 'shorts') {
+    p.push(pair('M56 136 L80 136 L80 166 L77 190 L54 188 Q53 160 56 136 Z', CLOTH.shorts));
+    p.push(pairLines('M56 143 L80 143', 'rgba(0,0,0,.2)'), pairLines('M55 182 L78 184 M62 160 Q66 166 70 164'));
+  } else {
+    p.push(pair('M56 136 L80 136 L80 168 L76.5 268 L61 268 Q58 205 55 160 Z', CLOTH.pants));
+    p.push(pairLines('M56 143 L80 143', 'rgba(0,0,0,.2)'), pairLines('M67 176 L69 262 M63 210 Q68 214 74 211 M64 238 Q69 241 75 238'));
+  }
+
+  // 腕・首（服より奥）
+  p.push(pair('M58 72 Q47 98 46 136 Q44 162 43 186 L53 187 Q55 162 58 138 Q61 108 66 84 Z', SKIN));
+  p.push(part('M72 48 L88 48 L89 72 Q80 77 71 72 Z', SKIN));
+  // 後ろ髪
+  p.push('<path d="M61 40 Q57 9 80 9 Q103 9 99 40 Q99 50 95 54 L65 54 Q61 50 61 40 Z" fill="url(#tf-hair)"/>');
 
   // トップス
+  const torso = 'M65 64 Q80 76 95 64 Q103 68 108 76 Q108 112 104 150 L56 150 Q52 112 52 76 Q57 68 65 64 Z';
   if (f.top === 'tank') {
-    p.push(shape('M48 42 Q60 54 72 42 L75 47 L78 100 L42 100 L45 47 Z', CLOTH.tank));
+    p.push(part('M64 64 Q80 86 96 64 L100 66 Q103 90 105 112 Q106 132 104 150 L56 150 Q54 132 55 112 Q57 90 60 66 Z', CLOTH.tank));
+    p.push(lines('M64 64 Q80 86 96 64', darken(CLOTH.tank, 0.8), 2), pairLines('M60 122 Q66 127 72 124 M62 140 Q68 143 74 141'));
+  } else if (f.top === 'tee') {
+    p.push(pair('M53 74 Q44 88 42 110 L58 114 Q60 98 65 86 Z', CLOTH.tee), part(torso, CLOTH.tee));
+    p.push(lines('M65 64 Q80 78 95 64', darken(CLOTH.tee, 0.8), 2.2), pairLines('M44 104 L58 108 M59 92 Q62 100 60 108 M60 124 Q67 129 73 126'));
   } else {
-    const col = CLOTH[f.top];
-    p.push(pair(f.top === 'tee' ? 'M44 42 L35 64 L44 68 L49 52 Z' : 'M44 42 L28 95 L38 98 L49 52 Z', col));
-    p.push(shape('M44 42 Q60 50 76 42 L79 48 L78 100 L42 100 L41 48 Z', col));
+    p.push(pair('M53 74 Q43 100 44 138 Q42 162 41 184 L54 186 Q56 162 58 140 Q61 110 66 86 Z', CLOTH.long), part(torso, CLOTH.long));
+    p.push(pairLines('M41.5 177 L54.5 179 M47 120 Q52 124 56 122 M60 124 Q67 129 73 126'));
+    p.push(lines('M80 76 L80 150', 'rgba(0,0,0,.15)'), buttons([80], [90, 106, 122, 138], '#c9ced6'));
+    p.push(pair('M68 60 L80 76 L65 72 Z', CLOTH.long)); // 襟
   }
 
   // アウター
-  const sleeve = 'M43 41 L26 96 L38 100 L50 52 Z';
-  const vneck = `<path d="M53 41 L60 58 L67 41 Z" fill="${CLOTH.long}"/>`;
-  const seam = (y2) => `<line x1="60" y1="58" x2="60" y2="${y2}" stroke="rgba(0,0,0,.25)"/>`;
+  const sleeve = 'M51 70 Q40 100 41 138 Q39 162 38 186 L55 188 Q57 162 59 140 Q62 112 67 86 Z';
+  const shirtV = `<path d="M70 62 L80 102 L90 62 Z" fill="${CLOTH.long}"/>${pair('M70 60 L80 76 L74 76 Z', CLOTH.long)}`;
   if (f.outer === 'cardigan') {
-    p.push(pair(sleeve, CLOTH.cardigan), pair('M43 41 L54 44 L56 104 L40 104 L40 48 Z', CLOTH.cardigan));
+    const c = CLOTH.cardigan;
+    p.push(pair(sleeve, c), pair('M64 62 L76 70 L77 156 L54 156 Q49 114 50 76 Q55 66 64 62 Z', c));
+    p.push(pairLines('M38.5 180 L55 182 M54 149 L77 149', darken(c, 0.8)), pairLines('M58 100 L58 140 M62 98 L63 142', 'rgba(0,0,0,.08)'));
+    p.push(buttons([74], [92, 108, 124, 140], darken(c, 0.6)));
   } else if (f.outer === 'jacket') {
-    p.push(pair(sleeve, CLOTH.jacket), shape('M41 41 L79 41 L80 104 L40 104 Z', CLOTH.jacket), vneck, seam(104));
+    const c = CLOTH.jacket;
+    p.push(pair(sleeve, c), part('M62 62 L98 62 Q106 66 110 76 Q111 118 107 160 L53 160 Q49 118 50 76 Q54 66 62 62 Z', c), shirtV);
+    p.push(pair('M68 61 L80 104 L72 94 L62 74 Z', darken(c, 0.9)));
+    p.push(lines('M80 104 L80 160', 'rgba(0,0,0,.25)'), buttons([80], [116, 134], darken(c, 0.55)));
+    p.push(pairLines('M58 140 L71 140 M38.5 180 L55 182 M46 118 Q51 122 56 120', 'rgba(0,0,0,.22)'));
   } else if (f.outer === 'trench' || f.outer === 'coat') {
-    const col = CLOTH[f.outer];
-    p.push(pair(sleeve, col), shape('M41 41 L79 41 L84 138 L36 138 Z', col), vneck, seam(138));
-    if (f.outer === 'trench') p.push('<rect x="39" y="90" width="42" height="6" fill="rgba(0,0,0,.18)"/>');
-    p.push(...[68, 82, 110].map((y) => `<circle cx="55" cy="${y}" r="1.6" fill="rgba(0,0,0,.35)"/><circle cx="65" cy="${y}" r="1.6" fill="rgba(0,0,0,.35)"/>`));
+    const c = CLOTH[f.outer];
+    p.push(pair(sleeve, c), part('M62 62 L98 62 Q106 66 110 76 Q113 150 117 236 L43 236 Q47 150 50 76 Q54 66 62 62 Z', c), shirtV);
+    p.push(pair('M67 59 L80 100 L70 92 L59 74 Z', darken(c, 0.9)));
+    p.push(lines('M84 100 L84 236', 'rgba(0,0,0,.25)'), buttons([73, 89], [110, 126, 160], darken(c, 0.55)));
+    p.push(pairLines('M38.5 180 L55 182 M57 196 L54 234 M67 186 L66 234 M46 118 Q51 122 56 120', 'rgba(0,0,0,.2)'));
+    if (f.outer === 'trench') {
+      p.push(part('M48 134 L112 134 L112 143 L48 143 Z', darken(c, 0.85)));
+      p.push(`<rect x="76" y="132" width="10" height="13" rx="1.5" fill="none" stroke="${darken(c, 0.5)}" stroke-width="1.6"/>`);
+      p.push(pairEl(`<path d="M52 64 L64 64 L60 82 L51 80 Z" fill="${darken(c, 0.93)}" stroke="${darken(c)}" stroke-width=".8"/>`)); // 肩のフラップ
+    }
   } else if (f.outer === 'down') {
-    p.push(pair('M41 40 L22 95 L39 101 L52 52 Z', CLOTH.down), shape('M36 40 Q60 36 84 40 L86 110 Q60 114 34 110 Z', CLOTH.down));
-    p.push('<path d="M36 58 Q60 62 84 58 M35 76 Q60 80 85 76 M35 94 Q60 98 85 94" fill="none" stroke="rgba(0,0,0,.2)" stroke-width="1.5"/>');
-    p.push('<line x1="60" y1="40" x2="60" y2="112" stroke="rgba(0,0,0,.3)"/>');
+    const c = CLOTH.down;
+    p.push(pair('M50 68 Q37 100 38 138 Q36 162 35 186 L56 189 Q59 162 61 140 Q64 112 69 86 Z', c));
+    p.push(pairLines('M41 108 L63 112 M39 138 L60 141 M37 164 L58 166', darken(c, 0.78), 1.4));
+    p.push(part('M56 62 Q80 56 104 62 Q110 66 113 78 Q116 118 111 168 Q80 175 49 168 Q44 118 47 78 Q50 66 56 62 Z', c));
+    p.push(lines('M48 90 Q80 97 112 90 M47 112 Q80 119 113 112 M47 134 Q80 141 113 134 M48 154 Q80 161 112 154', darken(c, 0.78), 1.4));
+    p.push(part('M63 50 L97 50 L99 70 Q80 77 61 70 Z', c), lines('M80 72 L80 172', darken(c, 0.6), 1.6));
   }
 
   // 頭・顔
-  p.push(`<circle cx="60" cy="24" r="14" fill="${SKIN}"/>`);
-  p.push(`<path d="M46 24 A14 14 0 0 1 74 24 Q67 15 60 17 Q53 15 46 24 Z" fill="${HAIR}"/>`);
-  p.push('<circle cx="55" cy="26" r="1.6" fill="#3a2a20"/><circle cx="65" cy="26" r="1.6" fill="#3a2a20"/>');
-  p.push('<path d="M56 31 Q60 34 64 31" fill="none" stroke="#a0624a" stroke-width="1.4" stroke-linecap="round"/>');
+  p.push(pairEl(`<ellipse cx="63.5" cy="38" rx="3.5" ry="5.5" fill="${SKIN}" stroke="${SKIN_SHADE}"/>`));
+  p.push(`<ellipse cx="80" cy="36" rx="17" ry="21" fill="url(#tf-face)" stroke="${SKIN_SHADE}" stroke-width=".8"/>`);
+  p.push(pairLines('M69 28.5 Q73 26.5 77 28.5', '#3b2a1f', 1.6));
+  p.push(pairEl('<ellipse cx="73" cy="34.5" rx="2.3" ry="1.7" fill="#2a1c14"/><circle cx="73.8" cy="33.9" r=".6" fill="#fff"/>'));
+  p.push(lines('M80 36.5 Q82.8 42.5 79 43.5', SKIN_SHADE, 1.2), lines('M75 48.5 Q80 51 85 48.5', '#b5655a', 1.5));
+  p.push(pairEl('<circle cx="69.5" cy="42.5" r="3.5" fill="rgba(232,120,110,.22)"/>'));
+  // 前髪
+  p.push('<path d="M62.5 36 Q60 11 80 11 Q100 11 97.5 36 Q96 26 91 21.5 Q84 28 72 24.5 Q66 26 62.5 36 Z" fill="url(#tf-hair)"/>');
+  p.push(lines('M70 16 Q76 14 82 17 M86 15 Q91 17 94 22', 'rgba(255,255,255,.18)', 1.2));
 
   // 小物
-  if (f.mask) p.push('<rect x="51" y="27.5" width="18" height="9" rx="4" fill="#fff" stroke="#c9d1dc"/>');
+  if (f.mask) {
+    p.push('<path d="M66 39 Q80 36 94 39 L93 52 Q80 57 67 52 Z" fill="#fff" stroke="#cfd6df"/>');
+    p.push(lines('M68 43.5 Q80 41.5 92 43.5 M68 47.5 Q80 46.5 92 47.5', '#dde3ea'), pairLines('M66 40 L62 36 M67 51 L62 42', '#cfd6df'));
+  }
   if (f.sun) {
-    p.push('<rect x="50.5" y="23" width="8" height="5" rx="2" fill="#222"/><rect x="61.5" y="23" width="8" height="5" rx="2" fill="#222"/><line x1="58.5" y1="25" x2="61.5" y2="25" stroke="#222"/>');
-    p.push(`<path d="M46 21 A14 13 0 0 1 74 21 Z" fill="${CLOTH.cap}"/><path d="M71 20 Q82 19 87 22 L71 22 Z" fill="${CLOTH.cap}"/>`);
+    p.push(pairEl('<rect x="65.5" y="30.5" width="12.5" height="8.5" rx="3.5" fill="url(#tf-glass)"/>'), lines('M78 33 Q80 32 82 33', '#111', 1.4));
+    p.push(part('M62 25 Q62 7 80 7 Q98 7 98 25 Z', CLOTH.cap), part('M92 23 Q108 21 115 27 L94 27 Z', darken(CLOTH.cap, 0.9)));
+    p.push(lines('M80 7 L80 25 M70 9 Q68 16 68 25', darken(CLOTH.cap, 0.8)), `<circle cx="80" cy="7" r="2" fill="${darken(CLOTH.cap, 0.85)}"/>`);
   }
   if (f.hat === 'knit') {
-    p.push(`<path d="M45 21 A15 15 0 0 1 75 21 Z" fill="${CLOTH.knit}"/><rect x="44" y="16" width="32" height="6" rx="3" fill="#a8383c"/><circle cx="60" cy="5" r="4" fill="#fff"/>`);
+    const c = CLOTH.knit;
+    p.push(part('M61 27 Q61 3 80 3 Q99 3 99 27 Z', c), lines('M70 6 Q67 14 67 23 M80 3 L80 23 M90 6 Q93 14 93 23', darken(c, 0.82)));
+    p.push(part('M59 21 L101 21 L101 31 Q80 33 59 31 Z', darken(c, 0.88)));
+    p.push(lines(Array.from({ length: 10 }, (_, i) => `M${62 + i * 4} 22 L${62 + i * 4} 31`).join(' '), darken(c, 0.7)));
+    p.push('<circle cx="80" cy="1" r="6" fill="#f3eee6" stroke="#d8d0c4"/>');
   }
   if (f.scarf) {
-    p.push(shape('M47 38 Q60 46 73 38 L74 46 Q60 54 46 46 Z', CLOTH.scarf), shape('M63 47 L65 68 L71 67 L68 46 Z', CLOTH.scarf));
+    const c = CLOTH.scarf;
+    p.push(part('M64 57 Q80 67 96 57 L98 72 Q80 82 62 72 Z', c), part('M84 72 L87 120 L98 118 L94 70 Z', darken(c, 0.9)));
+    p.push(lines('M85 84 L95 83 M86 96 L96 95 M63 64 Q80 73 97 64', darken(c, 0.7), 1.4));
+    p.push(lines(Array.from({ length: 5 }, (_, i) => `M${88 + i * 2.2} 119.5 L${88 + i * 2.2} 125`).join(' '), darken(c, 0.85), 1.2));
   }
   if (f.umbrella) {
-    p.push('<path d="M87 99 L92 6" stroke="#555" stroke-width="2"/><path d="M87 99 q-1 6 -6 4" fill="none" stroke="#555" stroke-width="2" stroke-linecap="round"/>');
-    p.push(shape('M62 20 Q92 -12 122 20 Q114.5 15 107 20 Q99.5 15 92 20 Q84.5 15 77 20 Q69.5 15 62 20 Z', CLOTH.umbrella));
+    const c = CLOTH.umbrella;
+    p.push(lines('M113 196 L125 15', '#4a4a4a', 2.2), lines('M113 196 Q112 205 105 204', '#4a4a4a', 2.4));
+    p.push(part('M86 40 Q124 -10 164 40 Q154 33 144.5 40 Q135 33 125 40 Q115 33 105.5 40 Q96 33 86 40 Z', c));
+    p.push(lines('M125 15 L105.5 40 M125 15 L125 40 M125 15 L144.5 40 M125 15 L125 8', darken(c, 0.75), 1.1));
   }
   // 手（手袋）
-  const hand = f.gloves ? CLOTH.glove : SKIN;
-  p.push(`<circle cx="33" cy="99" r="4.5" fill="${hand}"/><circle cx="87" cy="99" r="4.5" fill="${hand}"/>`);
+  p.push(pair('M42 184 Q40 196 44 204 Q49 208 53 202 Q55 194 54 185 Z', f.gloves ? CLOTH.glove : SKIN));
 
-  return `<svg viewBox="0 -4 126 172" role="img" aria-label="${f.label}">${p.join('')}</svg>`;
+  return `<svg viewBox="0 -8 170 292" role="img" aria-label="${f.label}">${p.join('')}</svg>`;
 }
 
 // ---------- API ----------
