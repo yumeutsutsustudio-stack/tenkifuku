@@ -47,4 +47,5 @@
 
 ## データ
 
-気象データ・地名検索：[Open-Meteo](https://open-meteo.com/)（CC BY 4.0、非商用利用は無料）
+- 気象データ・地名検索：[Open-Meteo](https://open-meteo.com/)（CC BY 4.0、非商用利用は無料）
+- 現在地の地名：[BigDataCloud](https://www.bigdatacloud.com/)（Free Client-side Reverse Geocoding API）

@@ -172,6 +172,19 @@ async function fetchForecast(lat, lon) {
   return res.json();
 }
 
+// 座標 → 地名（BigDataCloud、APIキー不要）。失敗したら「現在地」のまま
+async function reverseGeocode(lat, lon) {
+  try {
+    const params = new URLSearchParams({ latitude: lat, longitude: lon, localityLanguage: 'ja' });
+    const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?${params}`);
+    if (!res.ok) throw new Error(res.status);
+    const d = await res.json();
+    const name = d.city || d.locality;
+    if (name) return { name, admin: d.principalSubdivision && d.principalSubdivision !== name ? d.principalSubdivision : '' };
+  } catch { /* 地名が取れなくても天気は表示する */ }
+  return { name: '現在地', admin: '' };
+}
+
 async function geocode(name) {
   const params = new URLSearchParams({ name, count: 10, language: 'ja', format: 'json' });
   const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?${params}`);
@@ -428,7 +441,10 @@ $('geo-btn').addEventListener('click', () => {
   if (!navigator.geolocation) { setStatus('このブラウザは位置情報に対応していません', true); return; }
   setStatus('現在地を取得中…');
   navigator.geolocation.getCurrentPosition(
-    (pos) => loadPlace({ name: '現在地', admin: '', lat: pos.coords.latitude, lon: pos.coords.longitude }),
+    async (pos) => {
+      const { latitude: lat, longitude: lon } = pos.coords;
+      loadPlace({ ...(await reverseGeocode(lat, lon)), lat, lon });
+    },
     () => setStatus('現在地を取得できませんでした。位置情報の許可を確認してください', true),
     { timeout: 10000 },
   );
