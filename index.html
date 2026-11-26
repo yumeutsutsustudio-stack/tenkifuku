@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>てんき服 — 地域の天気と服装ガイド</title>
+  <meta name="theme-color" content="#2f6fdf">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="てんき服">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <h1>てんき服</h1>
+    <p class="tagline">地域の天気から、今日なにを着るかを提案します</p>
+  </header>
+
+  <main>
+    <section class="search">
+      <form id="search-form" autocomplete="off">
+        <input id="search-input" type="search" placeholder="市区町村名で検索（例：横浜、金沢、旭川）" aria-label="地域名">
+        <button type="submit">検索</button>
+        <button type="button" id="geo-btn" title="現在地の天気">📍 現在地</button>
+      </form>
+      <ul id="search-results" class="search-results" hidden></ul>
+      <div id="favorites" class="chips favorites" aria-label="お気に入り" hidden></div>
+      <div id="presets" class="chips presets" aria-label="主要都市"></div>
+    </section>
+
+    <p id="status" class="status" role="status"></p>
+
+    <section id="result" hidden>
+      <div class="current card">
+        <div class="current-main">
+          <div>
+            <div class="place-row">
+              <h2 id="place-name"></h2>
+              <button type="button" id="fav-btn" class="fav-btn"></button>
+            </div>
+            <p id="updated" class="muted"></p>
+          </div>
+          <div class="current-weather">
+            <span id="cur-icon" class="big-icon"></span>
+            <div>
+              <div id="cur-temp" class="big-temp"></div>
+              <div id="cur-desc"></div>
+            </div>
+          </div>
+        </div>
+        <dl class="current-stats">
+          <div><dt>体感</dt><dd id="cur-feel"></dd></div>
+          <div><dt>湿度</dt><dd id="cur-hum"></dd></div>
+          <div><dt>風速</dt><dd id="cur-wind"></dd></div>
+          <div><dt>今日</dt><dd id="today-range"></dd></div>
+        </dl>
+      </div>
+
+      <div class="outfit card">
+        <h3>今日の服装 <span id="window-label" class="muted inline"></span></h3>
+        <p id="compare" class="compare"></p>
+        <div class="outfit-main">
+          <span id="outfit-icon" class="outfit-icon"></span>
+          <div>
+            <p id="outfit-title" class="outfit-title"></p>
+            <p id="outfit-detail"></p>
+          </div>
+        </div>
+        <div class="index-bar" aria-hidden="true"><span id="index-marker"></span></div>
+        <div class="index-labels"><span>寒い</span><span>快適</span><span>暑い</span></div>
+        <ul id="advice" class="advice"></ul>
+        <div id="laundry" class="laundry"></div>
+      </div>
+
+      <details class="settings card" id="settings">
+        <summary>服装の設定（暑がり・寒がり／外出時間）</summary>
+        <div class="setting">
+          <label for="offset">暑がり・寒がり</label>
+          <input type="range" id="offset" min="-3" max="3" step="1">
+          <div class="range-labels"><span>寒がり</span><span>ふつう</span><span>暑がり</span></div>
+          <p id="offset-desc" class="muted"></p>
+        </div>
+        <div class="setting">
+          <span class="setting-label">外出する時間帯</span>
+          <div class="time-row">
+            <select id="start-h" aria-label="出かける時刻"></select>
+            <span>〜</span>
+            <select id="end-h" aria-label="帰る時刻"></select>
+          </div>
+          <p class="muted">この時間帯の気温・雨・風で服装と傘を判断します。</p>
+        </div>
+      </details>
+
+      <div class="card">
+        <h3>今日の時間ごとの天気</h3>
+        <div id="hourly" class="hourly"></div>
+        <p class="muted small">色の薄い時間は外出時間外です。</p>
+      </div>
+
+      <div class="card">
+        <h3>週間予報と服装</h3>
+        <div id="daily" class="daily"></div>
+        <p class="muted small">洗濯：◎よく乾く　○乾く　△乾きにくい　×部屋干し推奨（9〜15時の予報で判定）</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    気象データ：<a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>（CC BY 4.0）
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
