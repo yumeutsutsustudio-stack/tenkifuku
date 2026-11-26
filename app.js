@@ -258,7 +258,8 @@ const FIG_DEFS = `<defs>
 <linearGradient id="tf-glass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#666"/><stop offset=".5" stop-color="#111"/></linearGradient>
 </defs>`;
 
-function figureSVG(f) {
+// viewBox を変えると一部だけ切り抜いて表示できる（週間予報では頭〜腰）
+function figureSVG(f, viewBox = '0 -8 170 292') {
   const p = [FIG_DEFS];
   p.push('<ellipse cx="80" cy="281" rx="44" ry="5" fill="rgba(0,0,0,.12)"/>'); // 足もとの影
 
@@ -371,7 +372,7 @@ function figureSVG(f) {
   // 手（手袋）
   p.push(pair('M42 184 Q40 196 44 204 Q49 208 53 202 Q55 194 54 185 Z', f.gloves ? CLOTH.glove : SKIN));
 
-  return `<svg viewBox="0 -8 170 292" role="img" aria-label="${f.label}">${p.join('')}</svg>`;
+  return `<svg viewBox="${viewBox}" role="img" aria-label="${f.label}">${p.join('')}</svg>`;
 }
 
 // ---------- API ----------
@@ -522,10 +523,11 @@ function render() {
     const icn = el('div', 'i', dIcon);
     icn.title = dDesc;
     const wear = el('div', 'wear');
-    wear.append(
-      el('span', null, `${d.outfit.icon} ${d.outfit.title}${d.pop >= 50 ? '＋傘' : ''}`),
-      el('span', 'lau', d.laundry ? `洗濯${d.laundry.mark}` : ''),
-    );
+    const outfit = el('span', 'wear-outfit');
+    const mini = el('span', 'mini-fig');
+    mini.innerHTML = figureSVG({ ...d.outfit.fig, label: d.outfit.title }, '36 -6 88 160');
+    outfit.append(mini, `${d.outfit.title}${d.pop >= 50 ? '＋傘' : ''}`);
+    wear.append(outfit, el('span', 'lau', d.laundry ? `洗濯${d.laundry.mark}` : ''));
     row.append(
       el('div', `date ${wd === 0 ? 'sun' : wd === 6 ? 'sat' : ''}`, `${label}（${WD[wd]}）`),
       icn, temps, el('div', 'pop', `☂ ${d.pop}%`), wear,

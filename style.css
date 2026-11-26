@@ -202,7 +202,10 @@ html, body { overscroll-behavior-x: none; } /* 横スワイプでブラウザの
 .day .max { color: #d6603a; font-weight: 600; }
 .day .min { color: #3b7bd8; font-weight: 600; }
 .day .pop { color: var(--accent); font-size: 0.9rem; }
-.day .wear { font-size: 0.9rem; display: flex; justify-content: space-between; gap: 8px; }
+.day .wear { font-size: 0.9rem; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.wear-outfit { display: inline-flex; align-items: center; gap: 8px; }
+.mini-fig { flex: 0 0 auto; display: inline-flex; width: 30px; height: 54px; border-radius: 6px; background: var(--card); overflow: hidden; }
+.mini-fig svg { width: 100%; height: 100%; }
 .day .lau { color: var(--muted); white-space: nowrap; }
 
 .site-footer { text-align: center; color: var(--muted); font-size: 0.8rem; padding: 16px; }
