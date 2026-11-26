@@ -372,8 +372,11 @@ function figureSVG(f, viewBox = '0 -8 170 292') {
   // 手（手袋）
   p.push(pair('M42 184 Q40 196 44 204 Q49 208 53 202 Q55 194 54 185 Z', f.gloves ? CLOTH.glove : SKIN));
 
-  return `<svg viewBox="${viewBox}" role="img" aria-label="${f.label}">${p.join('')}</svg>`;
+  // グラデーションの id が複数の絵で重複すると、非表示の絵の定義を参照して顔や髪が塗られなくなるため、絵ごとに id を変える
+  const uid = `tf${++figureSVG.count}-`;
+  return `<svg viewBox="${viewBox}" role="img" aria-label="${f.label}">${p.join('').replace(/tf-(shade|face|hair|glass)\b/g, `${uid}$1`)}</svg>`;
 }
+figureSVG.count = 0;
 
 // ---------- API ----------
 // range: 既定は昨日〜7日先。旅行では { start_date, end_date } を渡す（16日先まで）
