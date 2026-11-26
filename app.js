@@ -249,6 +249,8 @@ const pair = (d, fill) => `${part(d, fill)}<g transform="${MIRROR}">${part(d, fi
 const lines = (d, color = 'rgba(0,0,0,.18)', w = 1) => `<path d="${d}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
 const pairLines = (d, color, w) => `${lines(d, color, w)}<g transform="${MIRROR}">${lines(d, color, w)}</g>`;
 const pairEl = (svg) => `${svg}<g transform="${MIRROR}">${svg}</g>`;
+// 髪：単色の上にグラデーションを重ねる（グラデーションが効かなくても髪が消えない）
+const hair = (d) => `<path d="${d}" fill="#3a2a1f"/><path d="${d}" fill="url(#tf-hair)"/>`;
 const buttons = (xs, ys, color) => xs.flatMap((x) => ys.map((y) => `<circle cx="${x}" cy="${y}" r="1.8" fill="${color}"/>`)).join('');
 
 const FIG_DEFS = `<defs>
@@ -278,7 +280,7 @@ function figureSVG(f, viewBox = '0 -8 170 292') {
   p.push(pair('M58 72 Q47 98 46 136 Q44 162 43 186 L53 187 Q55 162 58 138 Q61 108 66 84 Z', SKIN));
   p.push(part('M72 48 L88 48 L89 72 Q80 77 71 72 Z', SKIN));
   // 後ろ髪
-  p.push('<path d="M61 40 Q57 9 80 9 Q103 9 99 40 Q99 50 95 54 L65 54 Q61 50 61 40 Z" fill="url(#tf-hair)"/>');
+  p.push(hair('M61 40 Q57 9 80 9 Q103 9 99 40 Q99 50 95 54 L65 54 Q61 50 61 40 Z'));
 
   // トップス
   const torso = 'M65 64 Q80 76 95 64 Q103 68 108 76 Q108 112 104 150 L56 150 Q52 112 52 76 Q57 68 65 64 Z';
@@ -331,13 +333,15 @@ function figureSVG(f, viewBox = '0 -8 170 292') {
 
   // 頭・顔
   p.push(pairEl(`<ellipse cx="63.5" cy="38" rx="3.5" ry="5.5" fill="${SKIN}" stroke="${SKIN_SHADE}"/>`));
+  // 先に単色で塗っておく（グラデーションが効かない環境でも顔が白く抜けないように）
+  p.push(`<ellipse cx="80" cy="36" rx="17" ry="21" fill="${SKIN}"/>`);
   p.push(`<ellipse cx="80" cy="36" rx="17" ry="21" fill="url(#tf-face)" stroke="${SKIN_SHADE}" stroke-width=".8"/>`);
   p.push(pairLines('M69 28.5 Q73 26.5 77 28.5', '#3b2a1f', 1.6));
   p.push(pairEl('<ellipse cx="73" cy="34.5" rx="2.3" ry="1.7" fill="#2a1c14"/><circle cx="73.8" cy="33.9" r=".6" fill="#fff"/>'));
   p.push(lines('M80 36.5 Q82.8 42.5 79 43.5', SKIN_SHADE, 1.2), lines('M75 48.5 Q80 51 85 48.5', '#b5655a', 1.5));
   p.push(pairEl('<circle cx="69.5" cy="42.5" r="3.5" fill="rgba(232,120,110,.22)"/>'));
   // 前髪
-  p.push('<path d="M62.5 36 Q60 11 80 11 Q100 11 97.5 36 Q96 26 91 21.5 Q84 28 72 24.5 Q66 26 62.5 36 Z" fill="url(#tf-hair)"/>');
+  p.push(hair('M62.5 36 Q60 11 80 11 Q100 11 97.5 36 Q96 26 91 21.5 Q84 28 72 24.5 Q66 26 62.5 36 Z'));
   p.push(lines('M70 16 Q76 14 82 17 M86 15 Q91 17 94 22', 'rgba(255,255,255,.18)', 1.2));
 
   // 小物
