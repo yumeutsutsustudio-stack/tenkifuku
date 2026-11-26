@@ -12,6 +12,17 @@ const PRESETS = [
   { name: '那覇', admin: '沖縄県', lat: 26.2124, lon: 127.6809 },
 ];
 
+// 花粉データ（ウェザーニューズ）を取る地点：各都道府県の県庁所在地の市区町村コード
+const POLLEN_CITY = {
+  北海道: '01101', 青森県: '02201', 岩手県: '03201', 宮城県: '04101', 秋田県: '05201', 山形県: '06201', 福島県: '07201',
+  茨城県: '08201', 栃木県: '09201', 群馬県: '10201', 埼玉県: '11107', 千葉県: '12101', 東京都: '13101', 神奈川県: '14104',
+  新潟県: '15103', 富山県: '16201', 石川県: '17201', 福井県: '18201', 山梨県: '19201', 長野県: '20201', 岐阜県: '21201',
+  静岡県: '22101', 愛知県: '23106', 三重県: '24201', 滋賀県: '25201', 京都府: '26104', 大阪府: '27127', 兵庫県: '28110',
+  奈良県: '29201', 和歌山県: '30201', 鳥取県: '31201', 島根県: '32201', 岡山県: '33101', 広島県: '34101', 山口県: '35203',
+  徳島県: '36201', 香川県: '37201', 愛媛県: '38201', 高知県: '39201', 福岡県: '40133', 佐賀県: '41201', 長崎県: '42201',
+  熊本県: '43101', 大分県: '44201', 宮崎県: '45201', 鹿児島県: '46201', 沖縄県: '47201',
+};
+
 // WMO 天気コード → 日本語 + アイコン
 const WEATHER = {
   0: ['快晴', '☀️'], 1: ['晴れ', '🌤️'], 2: ['くもり時々晴れ', '⛅'], 3: ['くもり', '☁️'],
@@ -29,16 +40,16 @@ const weatherOf = (code) => WEATHER[code] || ['不明', '❔'];
 const isSnow = (code) => [71, 73, 75, 77, 85, 86].includes(code);
 const isWet = (code) => code >= 51; // 霧雨・雨・雪・雷雨
 
-// 体感最高気温ベースの服装ランク（上から順に判定）
+// 体感最高気温ベースの服装ランク（上から順に判定）。fig はイラストの着せ方
 const OUTFITS = [
-  { min: 30, icon: '🎽', title: 'ノースリーブ・半袖', detail: '真夏日。通気性のよい薄手の服で。' },
-  { min: 25, icon: '👕', title: '半袖', detail: '半袖Tシャツで快適。冷房対策に薄手の羽織があると安心。' },
-  { min: 21, icon: '👔', title: '長袖シャツ・薄手', detail: '長袖シャツやカットソー1枚でちょうどいい気温。' },
-  { min: 17, icon: '🧥', title: 'カーディガン・薄手の羽織', detail: '長袖に軽い羽織りを。日なたでは脱げるものが便利。' },
-  { min: 13, icon: '🧶', title: 'セーター・ジャケット', detail: 'ニットやジャケットなど、しっかりした長袖を。' },
-  { min: 9,  icon: '🧥', title: 'トレンチコート・薄手のコート', detail: 'コートが必要。インナーは長袖＋ニットで。' },
-  { min: 5,  icon: '🧥', title: '冬物コート', detail: 'ウールコートなど厚手のアウターを。首元も温かく。' },
-  { min: -Infinity, icon: '🧣', title: 'ダウン・マフラー・手袋', detail: '真冬の寒さ。ダウンに防寒小物をフル装備で。' },
+  { min: 30, icon: '🎽', title: 'ノースリーブ・半袖', detail: '真夏日。通気性のよい薄手の服で。', fig: { top: 'tank', bottom: 'shorts' } },
+  { min: 25, icon: '👕', title: '半袖', detail: '半袖Tシャツで快適。冷房対策に薄手の羽織があると安心。', fig: { top: 'tee' } },
+  { min: 21, icon: '👔', title: '長袖シャツ・薄手', detail: '長袖シャツやカットソー1枚でちょうどいい気温。', fig: { top: 'long' } },
+  { min: 17, icon: '🧥', title: 'カーディガン・薄手の羽織', detail: '長袖に軽い羽織りを。日なたでは脱げるものが便利。', fig: { top: 'long', outer: 'cardigan' } },
+  { min: 13, icon: '🧶', title: 'セーター・ジャケット', detail: 'ニットやジャケットなど、しっかりした長袖を。', fig: { top: 'long', outer: 'jacket' } },
+  { min: 9,  icon: '🧥', title: 'トレンチコート・薄手のコート', detail: 'コートが必要。インナーは長袖＋ニットで。', fig: { top: 'long', outer: 'trench' } },
+  { min: 5,  icon: '🧥', title: '冬物コート', detail: 'ウールコートなど厚手のアウターを。首元も温かく。', fig: { top: 'long', outer: 'coat', scarf: true } },
+  { min: -Infinity, icon: '🧣', title: 'ダウン・マフラー・手袋', detail: '真冬の寒さ。ダウンに防寒小物をフル装備で。', fig: { top: 'long', outer: 'down', scarf: true, gloves: true, hat: 'knit' } },
 ];
 
 // ---------- 保存（ブラウザ内） ----------
@@ -54,10 +65,11 @@ const store = {
   },
 };
 
-// offset: 暑がり(+)・寒がり(-)の補正℃ / start,end: 外出時間（時）
-const settings = Object.assign({ offset: 0, start: 8, end: 19 }, store.get('settings', {}));
+// offset: 暑がり(+)・寒がり(-)の補正℃ / start,end: 外出時間（時） / notify,notifyH: 前日のお知らせ
+const settings = Object.assign({ offset: 0, start: 8, end: 19, notify: false, notifyH: 21 }, store.get('settings', {}));
 let favorites = store.get('favorites', []);
-let state = null; // { place, data }
+let state = null; // { place, data, air, pollen }
+let viewDay = 0;  // 0: 今日 / 1: 明日
 
 const placeKey = (p) => `${p.lat.toFixed(2)},${p.lon.toFixed(2)}`;
 const isFavorite = (p) => favorites.some((f) => placeKey(f) === placeKey(p));
@@ -65,14 +77,15 @@ const isFavorite = (p) => favorites.some((f) => placeKey(f) === placeKey(p));
 // ---------- 判定ロジック ----------
 const outfitFor = (feel) => OUTFITS.find((o) => feel >= o.min);
 const avg = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
+const inWindow = (t, date, startH, endH) => {
+  const h = Number(t.slice(11, 13));
+  return t.startsWith(date) && h >= startH && h <= endH;
+};
 
 // 指定日の startH〜endH 時の予報をまとめる
 function windowStats(hourly, date, startH, endH) {
   const idx = [];
-  hourly.time.forEach((t, i) => {
-    const h = Number(t.slice(11, 13));
-    if (t.startsWith(date) && h >= startH && h <= endH) idx.push(i);
-  });
+  hourly.time.forEach((t, i) => { if (inWindow(t, date, startH, endH)) idx.push(i); });
   if (idx.length === 0) return null;
   const pick = (k) => idx.map((i) => hourly[k][i]).filter((v) => v != null);
   const feel = pick('apparent_temperature');
@@ -148,15 +161,156 @@ function buildAdvice(d) {
   return tips;
 }
 
-// 昨日との比較（外出時間帯の体感最高気温どうし）
-function compareText(today, yesterday) {
-  if (!yesterday) return '';
-  const diff = Math.round(today.feelMax - yesterday.feelMax);
-  if (diff <= -5) return `昨日より体感が ${-diff}℃ 低い。かなり寒く感じます。昨日より厚手の服を。`;
-  if (diff <= -2) return `昨日より体感が ${-diff}℃ 低い。昨日より1枚多めに。`;
-  if (diff >= 5) return `昨日より体感が ${diff}℃ 高い。昨日よりだいぶ薄着でOK。`;
-  if (diff >= 2) return `昨日より体感が ${diff}℃ 高い。昨日より1枚少なめでOK。`;
-  return '昨日とほぼ同じ体感。昨日と同じくらいの服装で大丈夫です。';
+// 前の日との比較（外出時間帯の体感最高気温どうし）。label は「昨日」「今日」
+function compareText(day, prev, label) {
+  if (!prev) return '';
+  const diff = Math.round(day.feelMax - prev.feelMax);
+  if (diff <= -5) return `${label}より体感が ${-diff}℃ 低い。かなり寒く感じます。${label}より厚手の服を。`;
+  if (diff <= -2) return `${label}より体感が ${-diff}℃ 低い。${label}より1枚多めに。`;
+  if (diff >= 5) return `${label}より体感が ${diff}℃ 高い。${label}よりだいぶ薄着でOK。`;
+  if (diff >= 2) return `${label}より体感が ${diff}℃ 高い。${label}より1枚少なめでOK。`;
+  return `${label}とほぼ同じ体感。${label}と同じくらいの服装で大丈夫です。`;
+}
+
+// ---------- 空気（PM2.5・黄砂・花粉） ----------
+// 外出時間帯の PM2.5（平均）と黄砂（最大）
+function dayAir(air, date) {
+  if (!air) return null;
+  const pm = [];
+  const dust = [];
+  air.time.forEach((t, i) => {
+    if (!inWindow(t, date, settings.start, settings.end)) return;
+    if (air.pm2_5[i] != null) pm.push(air.pm2_5[i]);
+    if (air.dust[i] != null) dust.push(air.dust[i]);
+  });
+  if (!pm.length && !dust.length) return null;
+  return { pm25: pm.length ? avg(pm) : null, dust: dust.length ? Math.max(...dust) : null };
+}
+
+// 目安（PM2.5 は環境基準の日平均 35µg/m³ を境に）
+const pmLevel = (v) => (v <= 15 ? ['良い', 0] : v <= 35 ? ['普通', 0] : v <= 70 ? ['やや多い', 1] : ['多い', 2]);
+const dustLevel = (v) => (v < 20 ? ['ほぼなし', 0] : v < 50 ? ['少し', 0] : v < 100 ? ['やや多い', 1] : ['多い', 2]);
+const pollenLevel = (v) => (v < 10 ? ['少ない', 0] : v < 30 ? ['やや多い', 1] : v < 50 ? ['多い', 2] : v < 100 ? ['非常に多い', 2] : ['極めて多い', 2]);
+
+// マスクをすすめる理由
+function maskReasons(air, pollen) {
+  const r = [];
+  if (pollen?.status === 'ok' && pollen.max >= 30) r.push('花粉');
+  if (air?.pm25 > 35) r.push('PM2.5');
+  if (air?.dust >= 50) r.push('黄砂');
+  return r;
+}
+
+// ---------- 持ち物 ----------
+function buildItems(d, mask) {
+  const items = [];
+  const add = (id, icon, name, why) => items.push({ id, icon, name, why });
+  const feel = d.feelMax + settings.offset; // 服に関わるものは暑がり・寒がりを反映
+
+  if (d.pop >= 50) add('umbrella', '☂️', '傘', `降水確率 ${d.pop}%`);
+  else if (d.pop >= 30) add('folding', '🌂', '折りたたみ傘', `降水確率 ${d.pop}%`);
+  if (d.snow) add('boots', '🥾', '滑りにくい靴', '雪の可能性');
+
+  const swing = d.tMax - d.tMin >= 8 || (d.feelMin < d.feelMax - 6 && d.feelMin < 15);
+  if (swing && feel >= 13) add('layer', '🧥', '脱ぎ着できる羽織', '寒暖差が大きい');
+  if (feel >= 27) add('aircon', '👚', '冷房対策の薄手の羽織', '室内は冷えることも');
+
+  if (d.feelMax >= 26) add('drink', '🥤', '飲み物', '汗をかく暑さ');
+  if (d.feelMax >= 31) add('cool', '🧊', '冷感グッズ（扇子・ハンディファン）', '熱中症対策');
+  if (d.uv >= 6) add('sunscreen', '🧴', '日焼け止め', `UV ${Math.round(d.uv)}`);
+  if (d.uv >= 8) {
+    add('hat', '🧢', '帽子', `UV ${Math.round(d.uv)}`);
+    add('sunglasses', '🕶️', 'サングラス', `UV ${Math.round(d.uv)}`);
+  }
+
+  if (feel < 9) add('scarf', '🧣', 'マフラー', '首元の防寒');
+  if (d.feelMin <= 3) add('gloves', '🧤', '手袋', `体感 最低 ${fmt(d.feelMin)}`);
+  if (d.feelMin <= 0) add('kairo', '🔥', 'カイロ', '氷点下の冷え込み');
+  if (d.humAvg > 0 && d.humAvg < 45 && d.feelMax < 15) add('lip', '💧', 'リップ・ハンドクリーム', `乾燥（湿度 ${Math.round(d.humAvg)}%）`);
+  if (mask.length) add('mask', '😷', 'マスク', `${mask.join('・')}が多め`);
+  return items;
+}
+
+// ---------- 服装のイラスト（SVG） ----------
+const SKIN = '#f3c9a1';
+const HAIR = '#4a3426';
+const CLOTH = {
+  tank: '#ef7a5a', tee: '#5b9be6', long: '#eef1f6', pants: '#4f6187', shorts: '#7d93b8',
+  cardigan: '#d9a066', jacket: '#7a8d5c', trench: '#cdae7e', coat: '#5a6c96', down: '#e46a5e',
+  scarf: '#c8464a', knit: '#c8464a', cap: '#f2b84b', umbrella: '#3f86f0', glove: '#7a4f3a',
+};
+const LINE = 'stroke="rgba(0,0,0,.25)" stroke-width="1" stroke-linejoin="round"';
+const shape = (d, fill) => `<path d="${d}" fill="${fill}" ${LINE}/>`;
+// 左側の形を描いて、左右反転したものも描く
+const pair = (d, fill) => shape(d, fill) + `<g transform="matrix(-1 0 0 1 120 0)">${shape(d, fill)}</g>`;
+
+function figureSVG(f) {
+  const p = [];
+  // 脚・靴
+  p.push(`<g stroke="${SKIN}" stroke-width="9" stroke-linecap="round"><line x1="51" y1="110" x2="51" y2="157"/><line x1="69" y1="110" x2="69" y2="157"/></g>`);
+  p.push('<ellipse cx="50" cy="161" rx="8" ry="4" fill="#3a3f4a"/><ellipse cx="70" cy="161" rx="8" ry="4" fill="#3a3f4a"/>');
+  p.push(f.bottom === 'shorts'
+    ? shape('M42 98 L78 98 L78 124 L62 124 L60 110 L58 124 L42 124 Z', CLOTH.shorts)
+    : shape('M42 98 L78 98 L77 157 L63 157 L60 112 L57 157 L43 157 Z', CLOTH.pants));
+  // 腕・首
+  p.push(`<g stroke="${SKIN}" stroke-width="8" stroke-linecap="round"><line x1="45" y1="50" x2="33" y2="97"/><line x1="75" y1="50" x2="87" y2="97"/></g>`);
+  p.push(`<rect x="55" y="34" width="10" height="10" fill="${SKIN}"/>`);
+
+  // トップス
+  if (f.top === 'tank') {
+    p.push(shape('M48 42 Q60 54 72 42 L75 47 L78 100 L42 100 L45 47 Z', CLOTH.tank));
+  } else {
+    const col = CLOTH[f.top];
+    p.push(pair(f.top === 'tee' ? 'M44 42 L35 64 L44 68 L49 52 Z' : 'M44 42 L28 95 L38 98 L49 52 Z', col));
+    p.push(shape('M44 42 Q60 50 76 42 L79 48 L78 100 L42 100 L41 48 Z', col));
+  }
+
+  // アウター
+  const sleeve = 'M43 41 L26 96 L38 100 L50 52 Z';
+  const vneck = `<path d="M53 41 L60 58 L67 41 Z" fill="${CLOTH.long}"/>`;
+  const seam = (y2) => `<line x1="60" y1="58" x2="60" y2="${y2}" stroke="rgba(0,0,0,.25)"/>`;
+  if (f.outer === 'cardigan') {
+    p.push(pair(sleeve, CLOTH.cardigan), pair('M43 41 L54 44 L56 104 L40 104 L40 48 Z', CLOTH.cardigan));
+  } else if (f.outer === 'jacket') {
+    p.push(pair(sleeve, CLOTH.jacket), shape('M41 41 L79 41 L80 104 L40 104 Z', CLOTH.jacket), vneck, seam(104));
+  } else if (f.outer === 'trench' || f.outer === 'coat') {
+    const col = CLOTH[f.outer];
+    p.push(pair(sleeve, col), shape('M41 41 L79 41 L84 138 L36 138 Z', col), vneck, seam(138));
+    if (f.outer === 'trench') p.push('<rect x="39" y="90" width="42" height="6" fill="rgba(0,0,0,.18)"/>');
+    p.push(...[68, 82, 110].map((y) => `<circle cx="55" cy="${y}" r="1.6" fill="rgba(0,0,0,.35)"/><circle cx="65" cy="${y}" r="1.6" fill="rgba(0,0,0,.35)"/>`));
+  } else if (f.outer === 'down') {
+    p.push(pair('M41 40 L22 95 L39 101 L52 52 Z', CLOTH.down), shape('M36 40 Q60 36 84 40 L86 110 Q60 114 34 110 Z', CLOTH.down));
+    p.push('<path d="M36 58 Q60 62 84 58 M35 76 Q60 80 85 76 M35 94 Q60 98 85 94" fill="none" stroke="rgba(0,0,0,.2)" stroke-width="1.5"/>');
+    p.push('<line x1="60" y1="40" x2="60" y2="112" stroke="rgba(0,0,0,.3)"/>');
+  }
+
+  // 頭・顔
+  p.push(`<circle cx="60" cy="24" r="14" fill="${SKIN}"/>`);
+  p.push(`<path d="M46 24 A14 14 0 0 1 74 24 Q67 15 60 17 Q53 15 46 24 Z" fill="${HAIR}"/>`);
+  p.push('<circle cx="55" cy="26" r="1.6" fill="#3a2a20"/><circle cx="65" cy="26" r="1.6" fill="#3a2a20"/>');
+  p.push('<path d="M56 31 Q60 34 64 31" fill="none" stroke="#a0624a" stroke-width="1.4" stroke-linecap="round"/>');
+
+  // 小物
+  if (f.mask) p.push('<rect x="51" y="27.5" width="18" height="9" rx="4" fill="#fff" stroke="#c9d1dc"/>');
+  if (f.sun) {
+    p.push('<rect x="50.5" y="23" width="8" height="5" rx="2" fill="#222"/><rect x="61.5" y="23" width="8" height="5" rx="2" fill="#222"/><line x1="58.5" y1="25" x2="61.5" y2="25" stroke="#222"/>');
+    p.push(`<path d="M46 21 A14 13 0 0 1 74 21 Z" fill="${CLOTH.cap}"/><path d="M71 20 Q82 19 87 22 L71 22 Z" fill="${CLOTH.cap}"/>`);
+  }
+  if (f.hat === 'knit') {
+    p.push(`<path d="M45 21 A15 15 0 0 1 75 21 Z" fill="${CLOTH.knit}"/><rect x="44" y="16" width="32" height="6" rx="3" fill="#a8383c"/><circle cx="60" cy="5" r="4" fill="#fff"/>`);
+  }
+  if (f.scarf) {
+    p.push(shape('M47 38 Q60 46 73 38 L74 46 Q60 54 46 46 Z', CLOTH.scarf), shape('M63 47 L65 68 L71 67 L68 46 Z', CLOTH.scarf));
+  }
+  if (f.umbrella) {
+    p.push('<path d="M87 99 L92 6" stroke="#555" stroke-width="2"/><path d="M87 99 q-1 6 -6 4" fill="none" stroke="#555" stroke-width="2" stroke-linecap="round"/>');
+    p.push(shape('M62 20 Q92 -12 122 20 Q114.5 15 107 20 Q99.5 15 92 20 Q84.5 15 77 20 Q69.5 15 62 20 Z', CLOTH.umbrella));
+  }
+  // 手（手袋）
+  const hand = f.gloves ? CLOTH.glove : SKIN;
+  p.push(`<circle cx="33" cy="99" r="4.5" fill="${hand}"/><circle cx="87" cy="99" r="4.5" fill="${hand}"/>`);
+
+  return `<svg viewBox="0 -4 126 172" role="img" aria-label="${f.label}">${p.join('')}</svg>`;
 }
 
 // ---------- API ----------
@@ -170,6 +324,32 @@ async function fetchForecast(lat, lon) {
   const res = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
   if (!res.ok) throw new Error(`天気データの取得に失敗しました（${res.status}）`);
   return res.json();
+}
+
+// PM2.5・黄砂（Open-Meteo Air Quality、APIキー不要）
+async function fetchAir(lat, lon) {
+  const params = new URLSearchParams({ latitude: lat, longitude: lon, timezone: 'auto', forecast_days: 3, hourly: 'pm2_5,dust' });
+  const res = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?${params}`);
+  if (!res.ok) throw new Error(res.status);
+  return (await res.json()).hourly;
+}
+
+// 花粉（ウェザーニューズの観測データ、APIキー不要）。2〜5月のみ、県庁所在地の観測値
+const prefOf = (place) => Object.keys(POLLEN_CITY).find((p) => (place.admin || '').includes(p) || place.name === p);
+async function fetchPollen(place) {
+  const pref = prefOf(place);
+  if (!pref) return null; // 日本以外
+  const now = new Date();
+  const m = now.getMonth() + 1;
+  if (m < 2 || m > 5) return { status: 'off', pref };
+  const ymd = `${now.getFullYear()}${String(m).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  const res = await fetch(`https://wxtech.weathernews.com/opendata/v1/pollen?citycode=${POLLEN_CITY[pref]}&start=${ymd}&end=${ymd}`);
+  if (!res.ok) return { status: 'none', pref };
+  const vals = (await res.text()).trim().split('\n').slice(1)
+    .map((line) => Number(line.split(',')[2]))
+    .filter((v) => Number.isFinite(v) && v >= 0); // -9999 は欠測
+  if (!vals.length) return { status: 'none', pref };
+  return { status: 'ok', pref, max: Math.max(...vals) };
 }
 
 // 座標 → 地名（BigDataCloud、APIキー不要）。失敗したら「現在地」のまま
@@ -225,12 +405,15 @@ function setStatus(msg, isError = false) {
   $('status').classList.toggle('error', isError);
 }
 
+function todayIndex(data) {
+  return Math.max(0, data.daily.time.indexOf(data.current.time.slice(0, 10)));
+}
+
 function render() {
   if (!state) return;
   const { place, data } = state;
   const { current, hourly, daily } = data;
-  const todayStr = current.time.slice(0, 10);
-  const ti = Math.max(0, daily.time.indexOf(todayStr));
+  const ti = todayIndex(data);
 
   // 現在の天気
   $('place-name').textContent = place.admin ? `${place.name}（${place.admin}）` : place.name;
@@ -243,27 +426,10 @@ function render() {
   $('cur-feel').textContent = `${current.apparent_temperature.toFixed(1)}℃`;
   $('cur-hum').textContent = `${current.relative_humidity_2m}%`;
   $('cur-wind').textContent = `${current.wind_speed_10m.toFixed(1)}m/s`;
-
-  // 今日の服装
   const today = dayData(data, ti);
-  const yesterday = ti > 0 ? dayData(data, ti - 1) : null;
   $('today-range').textContent = `${fmt(today.dayMax)} / ${fmt(today.dayMin)}`;
-  $('window-label').textContent = `（${settings.start}〜${settings.end}時）`;
-  $('compare').textContent = compareText(today, yesterday);
-  $('compare').hidden = !yesterday;
-  $('outfit-icon').textContent = today.outfit.icon;
-  $('outfit-title').textContent = today.outfit.title;
-  const pref = settings.offset > 0 ? '（暑がり設定）' : settings.offset < 0 ? '（寒がり設定）' : '';
-  $('outfit-detail').textContent = `体感 最高 ${fmt(today.feelMax)}・最低 ${fmt(today.feelMin)}${pref}。${today.outfit.detail}`;
-  const pos = Math.min(100, Math.max(0, ((today.feelMax + settings.offset + 5) / 40) * 100)); // -5℃〜35℃
-  $('index-marker').style.left = `${pos}%`;
-  $('advice').replaceChildren(...buildAdvice(today).map((t) => el('li', null, t)));
 
-  const lau = today.laundry;
-  $('laundry').replaceChildren();
-  if (lau) {
-    $('laundry').append(el('span', 'laundry-mark', lau.mark), el('strong', null, `洗濯：${lau.label}`), el('span', null, lau.text));
-  }
+  renderOutfit(ti);
 
   // 時間ごと（現在時刻から24時間、3時間おき）
   const nowIdx = Math.max(0, hourly.time.findIndex((t) => t >= current.time.slice(0, 13)));
@@ -307,8 +473,127 @@ function render() {
   }
   $('daily').replaceChildren(...days);
 
+  renderPager();
   $('result').hidden = false;
 }
+
+// 服装カード（今日／明日）
+function renderOutfit(ti) {
+  const { data } = state;
+  const di = Math.min(ti + viewDay, data.daily.time.length - 1);
+  const day = dayData(data, di);
+  const prev = di > 0 ? dayData(data, di - 1) : null;
+  const air = dayAir(state.air, day.date);
+  const pollen = viewDay === 0 ? state.pollen : null; // 花粉は今日の観測のみ
+  const mask = maskReasons(air, pollen);
+
+  $('outfit-heading').textContent = viewDay ? '明日の服装' : '今日の服装';
+  document.querySelectorAll('.day-tabs button').forEach((b) => {
+    const on = Number(b.dataset.day) === viewDay;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-selected', on);
+  });
+  $('window-label').textContent = `（${settings.start}〜${settings.end}時）`;
+  $('compare').textContent = compareText(day, prev, viewDay ? '今日' : '昨日');
+  $('compare').hidden = !prev;
+
+  const fig = { ...day.outfit.fig, label: day.outfit.title };
+  fig.umbrella = day.pop >= 50;
+  fig.gloves = fig.gloves || day.feelMin <= 3;
+  fig.sun = day.uv >= 8 && !fig.umbrella && !fig.hat;
+  fig.mask = mask.length > 0;
+  $('figure').innerHTML = figureSVG(fig);
+
+  $('outfit-title').textContent = day.outfit.title;
+  const pref = settings.offset > 0 ? '（暑がり設定）' : settings.offset < 0 ? '（寒がり設定）' : '';
+  $('outfit-detail').textContent = `体感 最高 ${fmt(day.feelMax)}・最低 ${fmt(day.feelMin)}${pref}。${day.outfit.detail}`;
+  const pos = Math.min(100, Math.max(0, ((day.feelMax + settings.offset + 5) / 40) * 100)); // -5℃〜35℃
+  $('index-marker').style.left = `${pos}%`;
+
+  const tips = buildAdvice(day);
+  if (mask.length) tips.push(`😷 ${mask.join('・')}が多め。マスクがあると安心です。`);
+  $('advice').replaceChildren(...tips.map((t) => el('li', null, t)));
+
+  renderAir(air, pollen);
+
+  const lau = day.laundry;
+  $('laundry').replaceChildren();
+  if (lau) {
+    $('laundry').append(el('span', 'laundry-mark', lau.mark), el('strong', null, `洗濯：${lau.label}`), el('span', null, lau.text));
+  }
+
+  renderItems(day, buildItems(day, mask));
+}
+
+function renderAir(air, pollen) {
+  const parts = [];
+  if (air?.pm25 != null) {
+    const [label, warn] = pmLevel(air.pm25);
+    parts.push(['PM2.5', `${label}（${Math.round(air.pm25)}µg/m³）`, warn]);
+  }
+  if (air?.dust != null) {
+    const [label, warn] = dustLevel(air.dust);
+    parts.push(['黄砂', label, warn]);
+  }
+  if (pollen) {
+    if (pollen.status === 'ok') {
+      const [label, warn] = pollenLevel(pollen.max);
+      parts.push(['花粉', `${label}（${pollen.pref}の観測）`, warn]);
+    } else {
+      parts.push(['花粉', pollen.status === 'off' ? '観測期間外（2〜5月に表示）' : 'データなし', 0]);
+    }
+  }
+  $('air').replaceChildren(...parts.map(([k, v, warn]) => {
+    const s = el('span', `air-item${warn ? ' warn' : ''}`);
+    s.append(el('strong', null, k), ` ${v}`);
+    return s;
+  }));
+}
+
+// 持ち物チェックリスト（チェックは日付ごとに保存）
+function renderItems(day, items) {
+  const checks = store.get('checks', {});
+  const done = new Set(checks[day.date] || []);
+  const count = () => {
+    const n = items.filter((it) => done.has(it.id)).length;
+    $('items-count').textContent = items.length ? `${n} / ${items.length}` : '';
+  };
+  const save = () => {
+    const keep = {};
+    const oldest = state.data.daily.time[todayIndex(state.data)];
+    Object.keys(checks).forEach((k) => { if (k >= oldest) keep[k] = checks[k]; }); // 過去の日は消す
+    keep[day.date] = [...done];
+    store.set('checks', keep);
+  };
+
+  if (items.length === 0) {
+    $('items').replaceChildren(el('li', 'none', '特別な持ち物はありません。'));
+    count();
+    return;
+  }
+  $('items').replaceChildren(...items.map((it) => {
+    const li = el('li', done.has(it.id) ? 'done' : '');
+    const label = el('label');
+    const box = el('input');
+    box.type = 'checkbox';
+    box.checked = done.has(it.id);
+    box.addEventListener('change', () => {
+      if (box.checked) done.add(it.id); else done.delete(it.id);
+      li.classList.toggle('done', box.checked);
+      save();
+      count();
+    });
+    label.append(box, el('span', 'icon', it.icon), el('span', 'name', it.name), el('span', 'why', it.why));
+    li.append(label);
+    return li;
+  }));
+  count();
+}
+
+document.querySelectorAll('.day-tabs button').forEach((b) => b.addEventListener('click', () => {
+  viewDay = Number(b.dataset.day);
+  if (state) renderOutfit(todayIndex(state.data));
+}));
 
 // ---------- お気に入り ----------
 function renderFavButton() {
@@ -341,9 +626,116 @@ function toggleFavorite(place) {
   store.set('favorites', favorites);
   renderFavorites();
   renderFavButton();
+  renderPager();
 }
 
 $('fav-btn').addEventListener('click', () => state && toggleFavorite(state.place));
+
+// ---------- お気に入りの切り替え（スワイプ・横スクロール） ----------
+const favIndex = () => (state ? favorites.findIndex((f) => placeKey(f) === placeKey(state.place)) : -1);
+
+// step: +1 で次、-1 で前（端まで行ったら反対側に戻る）
+function stepFavorite(step) {
+  const n = favorites.length;
+  const i = favIndex();
+  if (n === 0 || (n === 1 && i === 0)) return;
+  const next = i === -1 ? (step > 0 ? 0 : n - 1) : (i + step + n) % n;
+  loadPlace(favorites[next], step > 0 ? 'next' : 'prev');
+}
+
+function renderPager() {
+  const n = favorites.length;
+  const i = favIndex();
+  const show = n >= 2 || (n === 1 && i === -1);
+  $('pager').hidden = !show;
+  if (!show) return;
+  $('pager-dots').replaceChildren(...favorites.map((p, k) => {
+    const dot = el('button', `dot${k === i ? ' on' : ''}`);
+    dot.type = 'button';
+    dot.title = p.name;
+    dot.setAttribute('aria-label', p.name);
+    dot.addEventListener('click', () => { if (k !== i) loadPlace(p, k > i ? 'next' : 'prev'); });
+    return dot;
+  }));
+}
+
+$('pager-prev').addEventListener('click', () => stepFavorite(-1));
+$('pager-next').addEventListener('click', () => stepFavorite(1));
+
+// スマホ：左右にスワイプ（時間ごとの天気・設定の操作中は除く）
+let touch = null;
+$('result').addEventListener('touchstart', (e) => {
+  touch = e.touches.length === 1 && !e.target.closest('.hourly, input, select, .day-tabs')
+    ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+}, { passive: true });
+$('result').addEventListener('touchend', (e) => {
+  if (!touch) return;
+  const dx = e.changedTouches[0].clientX - touch.x;
+  const dy = e.changedTouches[0].clientY - touch.y;
+  touch = null;
+  if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) stepFavorite(dx < 0 ? 1 : -1);
+}, { passive: true });
+
+// パソコン：トラックパッドの横スクロール・Shift+ホイール
+let wheelX = 0;
+let wheelLock = 0;
+let wheelReset = null;
+$('result').addEventListener('wheel', (e) => {
+  if (Math.abs(e.deltaX) <= Math.abs(e.deltaY) || e.target.closest('.hourly')) return;
+  if (Date.now() < wheelLock) return;
+  wheelX += e.deltaX;
+  clearTimeout(wheelReset);
+  wheelReset = setTimeout(() => { wheelX = 0; }, 200);
+  if (Math.abs(wheelX) > 120) {
+    stepFavorite(wheelX > 0 ? 1 : -1);
+    wheelX = 0;
+    wheelLock = Date.now() + 800; // 1回のスクロールで何地域も進まないように
+  }
+}, { passive: true });
+
+// ---------- 前日のお知らせ ----------
+let notifyTimer = null;
+const canNotify = () => 'Notification' in window && Notification.permission === 'granted';
+
+async function showNotice(title, body) {
+  const opts = { body, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: 'tenki-fuku-tomorrow' };
+  const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
+  if (reg) await reg.showNotification(title, opts);
+  else new Notification(title, opts);
+}
+
+async function sendTomorrowNotice() {
+  const place = state?.place || store.get('last', null);
+  if (!place) return;
+  const data = await fetchForecast(place.lat, place.lon);
+  const ti = todayIndex(data);
+  const today = dayData(data, ti);
+  const tomorrow = dayData(data, ti + 1);
+  const extra = tomorrow.pop >= 50 ? '傘を忘れずに。' : tomorrow.pop >= 30 ? '折りたたみ傘があると安心。' : '';
+  await showNotice(
+    `明日の服装：${tomorrow.outfit.title}（${place.name}）`,
+    `${weatherOf(tomorrow.code)[0]}・体感 最高 ${fmt(tomorrow.feelMax)}。${compareText(tomorrow, today, '今日')}${extra}`,
+  );
+}
+
+function scheduleNotify() {
+  clearTimeout(notifyTimer);
+  if (!settings.notify || !canNotify()) return;
+  const now = new Date();
+  const at = new Date(now);
+  at.setHours(settings.notifyH, 0, 0, 0);
+  if (at <= now) at.setDate(at.getDate() + 1);
+  notifyTimer = setTimeout(async () => {
+    try { await sendTomorrowNotice(); } catch { /* 通信できないときは送らない */ }
+    scheduleNotify();
+  }, at - now);
+}
+
+function renderNotifyDesc(msg) {
+  $('notify-desc').textContent = msg || (settings.notify
+    ? `毎日 ${settings.notifyH}時に、最後に見た地域の明日の服装をお知らせします。このページ（アプリ）を閉じていると届きません。`
+    : '18時以降に開くと、自動で「明日」の服装を表示します。');
+}
 
 // ---------- 設定 ----------
 function renderOffsetDesc() {
@@ -384,16 +776,64 @@ function initSettings() {
   };
   $('start-h').addEventListener('change', () => onTime('start'));
   $('end-h').addEventListener('change', () => onTime('end'));
+
+  // お知らせ
+  for (let h = 15; h <= 23; h++) $('notify-h').append(new Option(`${h}時`, h));
+  $('notify-h').value = settings.notifyH;
+  $('notify-on').checked = settings.notify && canNotify();
+  renderNotifyDesc();
+
+  const askPermission = async () => {
+    if (!('Notification' in window)) {
+      renderNotifyDesc('このブラウザは通知に対応していません（iPhone はホーム画面に追加すると使えます）。');
+      return false;
+    }
+    if (Notification.permission !== 'granted' && (await Notification.requestPermission()) !== 'granted') {
+      renderNotifyDesc('通知が許可されませんでした。ブラウザの設定でこのサイトの通知を許可してください。');
+      return false;
+    }
+    return true;
+  };
+  $('notify-on').addEventListener('change', async () => {
+    if ($('notify-on').checked && !(await askPermission())) $('notify-on').checked = false;
+    settings.notify = $('notify-on').checked;
+    store.set('settings', settings);
+    scheduleNotify();
+    if (canNotify() || !settings.notify) renderNotifyDesc();
+  });
+  $('notify-h').addEventListener('change', () => {
+    settings.notifyH = Number($('notify-h').value);
+    store.set('settings', settings);
+    scheduleNotify();
+    renderNotifyDesc();
+  });
+  $('notify-test').addEventListener('click', async () => {
+    if (!(await askPermission())) return;
+    try { await sendTomorrowNotice(); } catch { renderNotifyDesc('通知の送信に失敗しました。通信状態を確認してください。'); }
+  });
 }
 
 // ---------- 読み込み ----------
-async function loadPlace(place) {
+// dir: 'next' / 'prev' のとき、切り替えのアニメーションを付ける
+async function loadPlace(place, dir) {
   setStatus(`${place.name} の天気を取得中…`);
   document.querySelectorAll('.presets button').forEach((b) => b.classList.toggle('active', b.textContent === place.name));
   try {
-    const data = await fetchForecast(place.lat, place.lon);
-    state = { place, data };
+    // 空気・花粉は取れなくても天気は表示する
+    const [data, air, pollen] = await Promise.all([
+      fetchForecast(place.lat, place.lon),
+      fetchAir(place.lat, place.lon).catch(() => null),
+      fetchPollen(place).catch(() => null),
+    ]);
+    viewDay = Number(data.current.time.slice(11, 13)) >= 18 ? 1 : 0; // 夜は明日の服装を表示
+    state = { place, data, air, pollen };
     render();
+    if (dir) {
+      const r = $('result');
+      r.classList.remove('slide-next', 'slide-prev');
+      void r.offsetWidth; // アニメーションをやり直すため
+      r.classList.add(`slide-${dir}`);
+    }
     setStatus('');
     store.set('last', place);
   } catch (e) {
@@ -458,6 +898,9 @@ $('presets').replaceChildren(...PRESETS.map((p) => {
 }));
 
 // ---------- 起動 ----------
+// 通知（Android など）に必要。ファイルを直接開いたときは登録できないので無視する
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 initSettings();
 renderFavorites();
+scheduleNotify();
 loadPlace(store.get('last', null) || favorites[0] || PRESETS[2]);

@@ -33,6 +33,11 @@
     <p id="status" class="status" role="status"></p>
 
     <section id="result" hidden>
+      <nav id="pager" class="pager" aria-label="お気に入りの地域を切り替え" hidden>
+        <button type="button" id="pager-prev" aria-label="前の地域">‹</button>
+        <div id="pager-dots" class="pager-dots"></div>
+        <button type="button" id="pager-next" aria-label="次の地域">›</button>
+      </nav>
       <div class="current card">
         <div class="current-main">
           <div>
@@ -59,10 +64,16 @@
       </div>
 
       <div class="outfit card">
-        <h3>今日の服装 <span id="window-label" class="muted inline"></span></h3>
+        <div class="card-head">
+          <h3><span id="outfit-heading">今日の服装</span> <span id="window-label" class="muted inline"></span></h3>
+          <div class="day-tabs" role="tablist" aria-label="表示する日">
+            <button type="button" role="tab" data-day="0">今日</button>
+            <button type="button" role="tab" data-day="1">明日</button>
+          </div>
+        </div>
         <p id="compare" class="compare"></p>
         <div class="outfit-main">
-          <span id="outfit-icon" class="outfit-icon"></span>
+          <div id="figure" class="figure"></div>
           <div>
             <p id="outfit-title" class="outfit-title"></p>
             <p id="outfit-detail"></p>
@@ -71,11 +82,17 @@
         <div class="index-bar" aria-hidden="true"><span id="index-marker"></span></div>
         <div class="index-labels"><span>寒い</span><span>快適</span><span>暑い</span></div>
         <ul id="advice" class="advice"></ul>
+        <div id="air" class="air"></div>
         <div id="laundry" class="laundry"></div>
+        <div class="items-head">
+          <h4>持ち物チェック</h4>
+          <span id="items-count" class="muted"></span>
+        </div>
+        <ul id="items" class="items"></ul>
       </div>
 
       <details class="settings card" id="settings">
-        <summary>服装の設定（暑がり・寒がり／外出時間）</summary>
+        <summary>設定（暑がり・寒がり／外出時間／お知らせ）</summary>
         <div class="setting">
           <label for="offset">暑がり・寒がり</label>
           <input type="range" id="offset" min="-3" max="3" step="1">
@@ -90,6 +107,15 @@
             <select id="end-h" aria-label="帰る時刻"></select>
           </div>
           <p class="muted">この時間帯の気温・雨・風で服装と傘を判断します。</p>
+        </div>
+        <div class="setting">
+          <span class="setting-label">前日のお知らせ</span>
+          <label class="check-row">
+            <input type="checkbox" id="notify-on">
+            毎日 <select id="notify-h" aria-label="お知らせの時刻"></select> に明日の服装を通知する
+          </label>
+          <button type="button" id="notify-test" class="small-btn">テスト通知を送る</button>
+          <p id="notify-desc" class="muted"></p>
         </div>
       </details>
 
@@ -108,7 +134,9 @@
   </main>
 
   <footer class="site-footer">
-    気象データ：<a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>（CC BY 4.0）
+    気象・大気データ：<a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>（CC BY 4.0）／
+    花粉：<a href="https://wxtech.weathernews.com/" target="_blank" rel="noopener">ウェザーニューズ</a>／
+    地名：<a href="https://www.bigdatacloud.com/" target="_blank" rel="noopener">BigDataCloud</a>
   </footer>
 
   <script src="app.js"></script>
